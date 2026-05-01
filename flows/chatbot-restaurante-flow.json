@@ -1,0 +1,426 @@
+{
+  "_comment": "Flujo de chatbot MesaBot para restaurantes - Importar en Tiledesk Design Studio",
+  "_version": "1.0",
+  "_descripcion": "Flujo completo: pedidos, reservas, menú y FAQs",
+
+  "intent_start": {
+    "id": "start",
+    "trigger": "INICIO / Hola / Buenos días / buenas",
+    "response": [
+      {
+        "type": "text",
+        "text": "¡Hola! 👋 Soy el asistente de *{{restaurante_nombre}}*.\n\n¿En qué te puedo ayudar hoy?"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "🛒 Hacer un pedido",   "goto": "pedido_inicio" },
+          { "label": "📅 Reservar una mesa", "goto": "reserva_inicio" },
+          { "label": "📋 Ver el menú",       "goto": "menu_mostrar"  },
+          { "label": "❓ Preguntas frecuentes", "goto": "faqs"       }
+        ]
+      }
+    ]
+  },
+
+  "intent_pedido": {
+    "id": "pedido_inicio",
+    "response": [
+      {
+        "type": "text",
+        "text": "¡Perfecto! 🛒 Vamos con tu pedido.\n\n¿Lo querés *para llevar* o *a domicilio*?"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "🏃 Para llevar",  "goto": "pedido_menu", "set": { "tipo_entrega": "llevar" } },
+          { "label": "🛵 A domicilio",  "goto": "pedido_domicilio" }
+        ]
+      }
+    ]
+  },
+
+  "intent_pedido_domicilio": {
+    "id": "pedido_domicilio",
+    "response": [
+      {
+        "type": "text",
+        "text": "¿Cuál es tu dirección de entrega? 📍\n\n_(Escribí la calle, número y piso si corresponde)_"
+      },
+      {
+        "type": "user_input",
+        "save_to": "direccion_entrega",
+        "goto": "pedido_menu"
+      }
+    ]
+  },
+
+  "intent_pedido_menu": {
+    "id": "pedido_menu",
+    "response": [
+      {
+        "type": "text",
+        "text": "📋 *Menú del día*\n\n🍕 *Pizzas*\n├ Mozzarella · $1200\n├ Napolitana · $1400\n└ Cuatro quesos · $1600\n\n🍔 *Hamburguesas*\n├ Clásica · $1100\n├ BBQ · $1300\n└ Veggie · $1250\n\n🥗 *Ensaladas*\n├ Verde · $900\n└ Mediterránea · $1050\n\n¿Qué querés pedir?"
+      },
+      {
+        "type": "user_input",
+        "save_to": "pedido_detalle",
+        "goto": "pedido_confirmar"
+      }
+    ]
+  },
+
+  "intent_pedido_confirmar": {
+    "id": "pedido_confirmar",
+    "response": [
+      {
+        "type": "text",
+        "text": "✅ *Resumen de tu pedido:*\n\n📦 {{pedido_detalle}}\n🚚 Entrega: {{tipo_entrega}}\n📍 {{direccion_entrega}}\n\n¿Confirmamos el pedido?"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "✅ Confirmar",      "goto": "pedido_pago" },
+          { "label": "✏️ Modificar",     "goto": "pedido_menu" },
+          { "label": "❌ Cancelar",       "goto": "start" }
+        ]
+      }
+    ]
+  },
+
+  "intent_pedido_pago": {
+    "id": "pedido_pago",
+    "response": [
+      {
+        "type": "text",
+        "text": "¡Perfecto! 🎉 Tu pedido fue registrado.\n\n💳 *¿Cómo querés pagar?*"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "💳 Tarjeta / MP",   "goto": "pedido_link_pago" },
+          { "label": "💵 Efectivo",        "goto": "pedido_finalizado" }
+        ]
+      }
+    ]
+  },
+
+  "intent_pedido_link_pago": {
+    "id": "pedido_link_pago",
+    "response": [
+      {
+        "type": "text",
+        "text": "🔗 Acá está tu link de pago:\n👉 {{link_pago_mp}}\n\nCuando confirmes el pago, empezamos a preparar tu pedido. ¡Gracias!"
+      },
+      {
+        "type": "webhook",
+        "url": "{{webhook_url}}/pedidos/nuevo",
+        "method": "POST",
+        "body": {
+          "tipo": "pedido",
+          "detalle": "{{pedido_detalle}}",
+          "entrega": "{{tipo_entrega}}",
+          "direccion": "{{direccion_entrega}}",
+          "metodo_pago": "online"
+        }
+      }
+    ]
+  },
+
+  "intent_pedido_finalizado": {
+    "id": "pedido_finalizado",
+    "response": [
+      {
+        "type": "text",
+        "text": "🎉 ¡Pedido confirmado! En breve te avisamos cuando esté listo.\n\n⏱ Tiempo estimado: *30-40 minutos*\n\n¿Necesitás algo más?"
+      },
+      {
+        "type": "webhook",
+        "url": "{{webhook_url}}/pedidos/nuevo",
+        "method": "POST",
+        "body": {
+          "tipo": "pedido",
+          "detalle": "{{pedido_detalle}}",
+          "entrega": "{{tipo_entrega}}",
+          "direccion": "{{direccion_entrega}}",
+          "metodo_pago": "efectivo"
+        }
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "🏠 Menú principal", "goto": "start" }
+        ]
+      }
+    ]
+  },
+
+  "intent_reserva": {
+    "id": "reserva_inicio",
+    "response": [
+      {
+        "type": "text",
+        "text": "📅 ¡Con gusto reservamos tu mesa!\n\n¿Para qué *fecha* la necesitás?\n_(Ejemplo: mañana, sábado 20, 25/01)_"
+      },
+      {
+        "type": "user_input",
+        "save_to": "reserva_fecha",
+        "goto": "reserva_hora"
+      }
+    ]
+  },
+
+  "intent_reserva_hora": {
+    "id": "reserva_hora",
+    "response": [
+      {
+        "type": "text",
+        "text": "¿A qué *hora*? ⏰\n_(Nuestros horarios: Lun-Dom 12:00 a 23:30)_"
+      },
+      {
+        "type": "user_input",
+        "save_to": "reserva_hora",
+        "goto": "reserva_personas"
+      }
+    ]
+  },
+
+  "intent_reserva_personas": {
+    "id": "reserva_personas",
+    "response": [
+      {
+        "type": "text",
+        "text": "¿Para cuántas *personas*? 👥"
+      },
+      {
+        "type": "user_input",
+        "save_to": "reserva_personas",
+        "goto": "reserva_nombre"
+      }
+    ]
+  },
+
+  "intent_reserva_nombre": {
+    "id": "reserva_nombre",
+    "response": [
+      {
+        "type": "text",
+        "text": "¿A nombre de quién hacemos la reserva? ✍️"
+      },
+      {
+        "type": "user_input",
+        "save_to": "reserva_nombre",
+        "goto": "reserva_confirmar"
+      }
+    ]
+  },
+
+  "intent_reserva_confirmar": {
+    "id": "reserva_confirmar",
+    "response": [
+      {
+        "type": "text",
+        "text": "📋 *Resumen de tu reserva:*\n\n👤 A nombre de: {{reserva_nombre}}\n📅 Fecha: {{reserva_fecha}}\n⏰ Hora: {{reserva_hora}}\n👥 Personas: {{reserva_personas}}\n\n¿Confirmamos?"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "✅ Confirmar reserva", "goto": "reserva_ok" },
+          { "label": "✏️ Modificar",        "goto": "reserva_inicio" },
+          { "label": "❌ Cancelar",          "goto": "start" }
+        ]
+      }
+    ]
+  },
+
+  "intent_reserva_ok": {
+    "id": "reserva_ok",
+    "response": [
+      {
+        "type": "text",
+        "text": "🎉 ¡Reserva confirmada, {{reserva_nombre}}!\n\nTe esperamos el *{{reserva_fecha}}* a las *{{reserva_hora}}* con mesa para *{{reserva_personas}} personas*.\n\nTe vamos a recordar 24hs y 2hs antes. ¡Hasta pronto! 🍽️"
+      },
+      {
+        "type": "webhook",
+        "url": "{{webhook_url}}/reservas/nueva",
+        "method": "POST",
+        "body": {
+          "tipo": "reserva",
+          "nombre": "{{reserva_nombre}}",
+          "fecha": "{{reserva_fecha}}",
+          "hora": "{{reserva_hora}}",
+          "personas": "{{reserva_personas}}",
+          "telefono": "{{contact_phone}}"
+        }
+      }
+    ]
+  },
+
+  "intent_menu": {
+    "id": "menu_mostrar",
+    "response": [
+      {
+        "type": "text",
+        "text": "📋 *¿Qué sección del menú querés ver?*"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "🍕 Pizzas",        "goto": "menu_pizzas"    },
+          { "label": "🍔 Hamburguesas",  "goto": "menu_burguer"   },
+          { "label": "🥗 Ensaladas",     "goto": "menu_ensaladas" },
+          { "label": "🍰 Postres",       "goto": "menu_postres"   },
+          { "label": "🍹 Bebidas",       "goto": "menu_bebidas"   },
+          { "label": "⭐ Especial del día", "goto": "menu_especial" }
+        ]
+      }
+    ]
+  },
+
+  "intent_menu_especial": {
+    "id": "menu_especial",
+    "response": [
+      {
+        "type": "text",
+        "text": "⭐ *Especial de hoy:*\n\n🍝 *Lasagna de la casa*\nCon salsa boloñesa casera, bechamel y queso gratinado.\n💰 Precio especial: *$1.100*\n_(Precio normal: $1.400)_\n\n¿Querés agregar al pedido?"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "🛒 Agregar al pedido", "goto": "pedido_inicio" },
+          { "label": "↩️ Volver al menú",   "goto": "menu_mostrar"  }
+        ]
+      }
+    ]
+  },
+
+  "intent_faqs": {
+    "id": "faqs",
+    "response": [
+      {
+        "type": "text",
+        "text": "❓ *Preguntas frecuentes*\n\n¿Qué querés saber?"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "🕐 Horarios",          "goto": "faq_horarios"   },
+          { "label": "📍 Dónde estamos",     "goto": "faq_ubicacion"  },
+          { "label": "💳 Medios de pago",    "goto": "faq_pagos"      },
+          { "label": "🛵 Zona de delivery",  "goto": "faq_delivery"   },
+          { "label": "🌱 Opciones veganas",  "goto": "faq_vegano"     },
+          { "label": "👨‍💼 Hablar con alguien", "goto": "human_handoff" }
+        ]
+      }
+    ]
+  },
+
+  "intent_faq_horarios": {
+    "id": "faq_horarios",
+    "response": [
+      {
+        "type": "text",
+        "text": "🕐 *Nuestros horarios:*\n\n📅 Lunes a Viernes: 12:00 - 23:30\n📅 Sábados: 12:00 - 00:30\n📅 Domingos: 12:00 - 23:00\n\n_(Los feriados pueden variar, consultanos)_ 🙏"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "↩️ Más preguntas",   "goto": "faqs" },
+          { "label": "🏠 Inicio",          "goto": "start" }
+        ]
+      }
+    ]
+  },
+
+  "intent_faq_ubicacion": {
+    "id": "faq_ubicacion",
+    "response": [
+      {
+        "type": "text",
+        "text": "📍 *Nos encontrás en:*\n\n{{restaurante_direccion}}\n\n👉 {{link_maps}}"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "↩️ Más preguntas", "goto": "faqs" },
+          { "label": "🏠 Inicio",        "goto": "start" }
+        ]
+      }
+    ]
+  },
+
+  "intent_faq_pagos": {
+    "id": "faq_pagos",
+    "response": [
+      {
+        "type": "text",
+        "text": "💳 *Aceptamos:*\n\n✅ Efectivo\n✅ Tarjeta de débito y crédito\n✅ Mercado Pago / transferencia\n✅ QR\n\n_Sin recargo en cuotas 😊_"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "↩️ Más preguntas", "goto": "faqs" },
+          { "label": "🏠 Inicio",        "goto": "start" }
+        ]
+      }
+    ]
+  },
+
+  "intent_faq_delivery": {
+    "id": "faq_delivery",
+    "response": [
+      {
+        "type": "text",
+        "text": "🛵 *Delivery disponible:*\n\n📍 Radio: hasta 5km del local\n⏱ Tiempo estimado: 30-45 minutos\n💰 Costo de envío: $300\n🆓 Gratis en pedidos mayores a $3.000\n\n_¿Querés hacer un pedido?_"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "🛒 Hacer pedido",  "goto": "pedido_inicio" },
+          { "label": "↩️ Más preguntas", "goto": "faqs" }
+        ]
+      }
+    ]
+  },
+
+  "intent_faq_vegano": {
+    "id": "faq_vegano",
+    "response": [
+      {
+        "type": "text",
+        "text": "🌱 *Opciones veganas y vegetarianas:*\n\n✅ Ensalada Mediterránea (vegana)\n✅ Pizza de verduras (vegetariana)\n✅ Hamburguesa Veggie (vegana)\n✅ Postres sin lactosa disponibles\n\n_Siempre consultanos por alérgenos_ 🙏"
+      },
+      {
+        "type": "buttons",
+        "buttons": [
+          { "label": "📋 Ver menú completo", "goto": "menu_mostrar" },
+          { "label": "↩️ Más preguntas",    "goto": "faqs" }
+        ]
+      }
+    ]
+  },
+
+  "intent_human_handoff": {
+    "id": "human_handoff",
+    "response": [
+      {
+        "type": "text",
+        "text": "👨‍💼 Te conecto con un miembro de nuestro equipo.\n\nUn momento por favor... ⏳\n_(Horario de atención: 12:00 a 23:00)_"
+      },
+      {
+        "type": "assign_to_agent",
+        "department": "atencion_cliente"
+      }
+    ]
+  },
+
+  "variables_configurables": {
+    "_nota": "Reemplazar estos valores en el dashboard de Tiledesk o por variables de entorno",
+    "restaurante_nombre": "Nombre de tu restaurante",
+    "restaurante_direccion": "Calle Falsa 123, Ciudad",
+    "link_maps": "https://maps.google.com/?q=...",
+    "link_pago_mp": "https://mpago.la/...",
+    "webhook_url": "https://tu-backend.com/api",
+    "contact_phone": "Variable automática de Tiledesk"
+  }
+}

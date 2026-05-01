@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kanban - Chatwoot</title>
+    <!-- Anti-flash: aplica tema correto ANTES do React carregar -->
+    <style>
+      html { background-color: #121213; color-scheme: dark; }
+    </style>
+    <script>
+      (function() {
+        try {
+          // Prioridade: URL param > localStorage > dark (default)
+          var urlParams = new URLSearchParams(window.location.search);
+          var urlTheme = urlParams.get('theme');
+          var saved = localStorage.getItem('kanbancw-theme');
+          var theme = (urlTheme === 'light' || urlTheme === 'dark') ? urlTheme
+                    : (saved === 'light' || saved === 'dark') ? saved
+                    : 'dark';
+
+          if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.colorScheme = 'light';
+            document.documentElement.style.backgroundColor = '#ffffff';
+          } else {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+            document.documentElement.style.setProperty('background-color', '#121213', 'important');
+          }
+        } catch(e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-es2.js"></script>
+    <script>
+    (function() {
+      // Captura los headers de auth de las llamadas que ya hace el frontend
+      var _capturedHeaders = { 'Content-Type': 'application/json' };
+      var _origFetch = window.fetch;
+
+      window.fetch = function(url, opts) {
+        // Capturar headers de cualquier llamada a la API para reutilizarlos
+        if (typeof url === 'string' && url.includes('/api/') && opts && opts.headers) {
+          var h = opts.headers;
+          ['access-token','token-type','client','uid','Authorization','api_access_token'].forEach(function(k) {
+            if (h[k]) _capturedHeaders[k] = h[k];
+          });
+        }
+
+        var p = _origFetch.apply(this, arguments);
+
+        // Interceptar respuesta del move de card
+        if (typeof url === 'string' && /\/api\/kanban\/\d+\/move(-to-stage)?$/.test(url) && opts && opts.method === 'PATCH') {
+          return p.then(function(res) {
+            var clone = res.clone();
+            clone.json().then(function(data) {
+              if (data && data.pendingMessage) {
+                showMessageModal(data.conversationId, data.pendingMessage, url);
+              }
+            }).catch(function(){});
+            return res;
+          });
+        }
+        return p;
+      };
+
+      function showMessageModal(conversationId, message, originUrl) {
+        var old = document.getElementById('_kcw_msg_modal');
+        if (old) old.remove();
+
+        var isDark = document.documentElement.classList.contains('dark');
+        var bg = isDark ? '#1e1e1f' : '#ffffff';
+        var border = isDark ? '#3f3f46' : '#e4e4e7';
+        var textColor = isDark ? '#f4f4f5' : '#18181b';
+        var labelColor = isDark ? '#a1a1aa' : '#52525b';
+        var inputBg = isDark ? '#2a2a2b' : '#f9f9f9';
+        var overlay = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.4)';
+
+        // Extraer base URL de la llamada original
+        var base = '';
+        try { base = new URL(originUrl, location.href).origin === location.origin ? '' : new URL(originUrl).origin; } catch(e) {}
+
+        var modal = document.createElement('div');
+        modal.id = '_kcw_msg_modal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:' + overlay;
+
+        modal.innerHTML =
+          '<div style="background:' + bg + ';border:1px solid ' + border + ';border-radius:12px;padding:24px;width:460px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.4);">' +
+            '<h3 style="margin:0 0 6px;font-size:16px;font-weight:600;color:' + textColor + ';">Enviar mensaje al cliente</h3>' +
+            '<p style="margin:0 0 14px;font-size:13px;color:' + labelColor + ';">Revisá y editá el mensaje antes de enviarlo.</p>' +
+            '<textarea id="_kcw_msg_text" style="width:100%;box-sizing:border-box;min-height:100px;padding:10px 12px;border-radius:8px;border:1px solid ' + border + ';background:' + inputBg + ';color:' + textColor + ';font-size:14px;resize:vertical;font-family:inherit;outline:none;">' + escHtml(message) + '</textarea>' +
+            '<div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">' +
+              '<button id="_kcw_msg_cancel" style="padding:8px 18px;border-radius:8px;border:1px solid ' + border + ';background:transparent;color:' + textColor + ';font-size:14px;cursor:pointer;">No enviar</button>' +
+              '<button id="_kcw_msg_send" style="padding:8px 18px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-size:14px;cursor:pointer;font-weight:500;">Enviar</button>' +
+            '</div>' +
+          '</div>';
+
+        document.body.appendChild(modal);
+
+        document.getElementById('_kcw_msg_cancel').onclick = function() { modal.remove(); };
+        modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+        document.getElementById('_kcw_msg_send').onclick = function() {
+          var txt = document.getElementById('_kcw_msg_text').value.trim();
+          if (!txt) return;
+          var btn = document.getElementById('_kcw_msg_send');
+          btn.disabled = true;
+          btn.textContent = 'Enviando...';
+
+          _origFetch(base + '/api/kanban/' + conversationId + '/send-message', {
+            method: 'POST',
+            headers: _capturedHeaders,
+            body: JSON.stringify({ message: txt })
+          }).then(function(r) {
+            modal.remove();
+            if (!r.ok) console.error('Error al enviar mensaje al cliente');
+          }).catch(function(e) {
+            modal.remove();
+            console.error('Error al enviar mensaje', e);
+          });
+        };
+      }
+
+      function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+
+      // ── Notes functionality ───────────────────────────────────────────────
+      var _notesCache = {}; // conversationId (string) -> notes text
+
+      // Intercept GET kanban responses to cache notes
+      var _notesOrigFetch = window.fetch;
+      window.fetch = function(url, opts) {
+        var p = _notesOrigFetch.apply(this, arguments);
+        if (typeof url === 'string' && /\/api\/kanban(\/funnel\/\d+)?(\?.*)?$/.test(url) &&
+            (!opts || !opts.method || opts.method === 'GET')) {
+          return p.then(function(res) {
+            var clone = res.clone();
+            clone.json().then(function(data) {
+              if (data && data.data && data.data.columns) {
+                data.data.columns.forEach(function(col) {
+                  (col.cards || []).forEach(function(card) {
+                    if (card.id != null) {
+                      _notesCache[String(card.id)] = card.notes || '';
+                    }
+                  });
+                });
+              }
+            }).catch(function(){});
+            return res;
+          });
+        }
+        return p;
+      };
+
+      function _kcwSaveNotes(convId, notes, onSuccess, onError) {
+        window.fetch('/api/kanban/' + convId + '/notes', {
+          method: 'PATCH',
+          headers: _capturedHeaders,
+          body: JSON.stringify({ notes: notes })
+        }).then(function(r) {
+          if (r.ok) { onSuccess(); } else { onError(); }
+        }).catch(function() { onError(); });
+      }
+
+      function _kcwShowNotesModal(convId) {
+        var old = document.getElementById('_kcw_notes_modal');
+        if (old) old.remove();
+
+        var isDark = document.documentElement.classList.contains('dark');
+        var bg = isDark ? '#1e1e1f' : '#ffffff';
+        var border = isDark ? '#3f3f46' : '#e4e4e7';
+        var textColor = isDark ? '#f4f4f5' : '#18181b';
+        var labelColor = isDark ? '#a1a1aa' : '#52525b';
+        var inputBg = isDark ? '#2a2a2b' : '#f9f9f9';
+        var overlay = isDark ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.4)';
+
+        var currentNotes = _notesCache[String(convId)] || '';
+
+        var modal = document.createElement('div');
+        modal.id = '_kcw_notes_modal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:' + overlay;
+        modal.innerHTML =
+          '<div id="_kcw_notes_box" style="background:' + bg + ';border:1px solid ' + border + ';border-radius:12px;padding:24px;width:480px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.4);">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
+              '<h3 style="margin:0;font-size:16px;font-weight:600;color:' + textColor + ';">Notas del card</h3>' +
+              '<button id="_kcw_notes_close" style="background:none;border:none;cursor:pointer;color:' + labelColor + ';font-size:20px;line-height:1;padding:4px 6px;">×</button>' +
+            '</div>' +
+            '<p style="margin:0 0 12px;font-size:13px;color:' + labelColor + ';">Notas internas, visibles solo en el kanban.</p>' +
+            '<textarea id="_kcw_notes_text" rows="6" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid ' + border + ';background:' + inputBg + ';color:' + textColor + ';font-size:14px;resize:vertical;font-family:inherit;outline:none;line-height:1.5;">' + escHtml(currentNotes) + '</textarea>' +
+            '<div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end;">' +
+              '<button id="_kcw_notes_cancel" style="padding:8px 18px;border-radius:8px;border:1px solid ' + border + ';background:transparent;color:' + textColor + ';font-size:14px;cursor:pointer;">Cancelar</button>' +
+              '<button id="_kcw_notes_save" style="padding:8px 18px;border-radius:8px;border:none;background:#3b82f6;color:#fff;font-size:14px;font-weight:500;cursor:pointer;">Guardar</button>' +
+            '</div>' +
+          '</div>';
+
+        document.body.appendChild(modal);
+
+        document.getElementById('_kcw_notes_close').onclick = function() { modal.remove(); };
+        document.getElementById('_kcw_notes_cancel').onclick = function() { modal.remove(); };
+        modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+
+        var ta = document.getElementById('_kcw_notes_text');
+        ta.focus();
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+
+        document.getElementById('_kcw_notes_save').onclick = function() {
+          var txt = ta.value;
+          var btn = this;
+          btn.disabled = true; btn.textContent = 'Guardando...';
+          _kcwSaveNotes(convId, txt, function() {
+            _notesCache[String(convId)] = txt;
+            _kcwUpdateNotesBtns(String(convId), txt);
+            modal.remove();
+          }, function() {
+            btn.disabled = false; btn.textContent = 'Guardar';
+          });
+        };
+      }
+
+      function _kcwUpdateNotesBtns(convIdStr, notes) {
+        var hasNotes = notes && notes.trim().length > 0;
+        document.querySelectorAll('[data-rfd-draggable-id="' + convIdStr + '-draggable-id"] ._kcw_notes_btn').forEach(function(b) {
+          b.style.color = hasNotes ? '#3b82f6' : (document.documentElement.classList.contains('dark') ? '#71717a' : '#9ca3af');
+          b.title = hasNotes ? 'Notas (hay contenido)' : 'Agregar notas';
+        });
+      }
+
+      function _kcwInjectNotesBtnIfNeeded(cardEl) {
+        if (!cardEl || cardEl.querySelector('._kcw_notes_btn')) return;
+        var draggableId = cardEl.getAttribute('data-rfd-draggable-id');
+        if (!draggableId || !draggableId.endsWith('-draggable-id')) return;
+        var convIdStr = draggableId.slice(0, -'-draggable-id'.length);
+        if (isNaN(parseInt(convIdStr, 10))) return;
+
+        var btn = document.createElement('button');
+        btn.className = '_kcw_notes_btn';
+        btn.title = _notesCache[convIdStr] && _notesCache[convIdStr].trim() ? 'Notas (hay contenido)' : 'Agregar notas';
+        var hasNotes = _notesCache[convIdStr] && _notesCache[convIdStr].trim();
+        var isDark = document.documentElement.classList.contains('dark');
+        var iconColor = hasNotes ? '#3b82f6' : (isDark ? '#71717a' : '#9ca3af');
+        btn.style.cssText = 'position:absolute;bottom:6px;right:6px;z-index:10;background:none;border:none;cursor:pointer;padding:3px;line-height:1;color:' + iconColor + ';transition:color 0.15s;';
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 1A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h6.086a1.5 1.5 0 0 0 1.06-.44l4.915-4.914A1.5 1.5 0 0 0 15 8.586V2.5A1.5 1.5 0 0 0 13.5 1zm6 8.5a1 1 0 0 1 1-1h4.396l-5.396 5.396V9.5z"/></svg>';
+
+        var posStyle = window.getComputedStyle(cardEl).position;
+        if (!posStyle || posStyle === 'static') cardEl.style.position = 'relative';
+        cardEl.appendChild(btn);
+
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          e.preventDefault();
+          _kcwShowNotesModal(parseInt(convIdStr, 10));
+        });
+        btn.addEventListener('mouseenter', function() { this.style.color = '#3b82f6'; });
+        btn.addEventListener('mouseleave', function() {
+          var h = _notesCache[convIdStr] && _notesCache[convIdStr].trim();
+          var dark = document.documentElement.classList.contains('dark');
+          this.style.color = h ? '#3b82f6' : (dark ? '#71717a' : '#9ca3af');
+        });
+      }
+
+      // MutationObserver — inject notes button on new cards
+      (function() {
+        function scanForCards(root) {
+          var nodes = (root.querySelectorAll ? root.querySelectorAll('[data-rfd-draggable-id]') : []);
+          Array.prototype.forEach.call(nodes, _kcwInjectNotesBtnIfNeeded);
+          if (root.getAttribute && root.getAttribute('data-rfd-draggable-id')) {
+            _kcwInjectNotesBtnIfNeeded(root);
+          }
+        }
+        var obs = new MutationObserver(function(mutations) {
+          mutations.forEach(function(m) {
+            m.addedNodes.forEach(function(n) {
+              if (n.nodeType === 1) scanForCards(n);
+            });
+          });
+        });
+        function start() {
+          obs.observe(document.body, { childList: true, subtree: true });
+          scanForCards(document.body);
+        }
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', start);
+        } else {
+          start();
+        }
+      })();
+      // ── End Notes ─────────────────────────────────────────────────────────
+    })();
+    </script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CXtuWbYA.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Config gerado em runtime pelo Nginx -->
+    <script src="/config.js"></script>
+  </body>
+</html>

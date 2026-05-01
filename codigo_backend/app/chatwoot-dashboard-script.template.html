@@ -1,0 +1,2575 @@
+<script>
+// ============================================================
+// SCRIPT 1: MENU KANBAN + CONEXÕES NO SIDEBAR
+// ============================================================
+(function() {
+  'use strict';
+
+  // ⚠️ ESTA URL É SUBSTITUÍDA AUTOMATICAMENTE PELO SCRIPT generate-chatwoot-script.sh
+  // Não edite manualmente! Configure no docker-compose.swarm.yml
+  const KANBAN_URL = '__KANBANCW_URL__';
+
+  var panelOpen = false;
+  var currentPath = null;
+  var menuItemsAdded = false;
+  var lastUrl = location.href;
+  var observer = null;
+  var lastAccountId = null;
+
+  function injectCSS() {
+    if (document.getElementById('cw-custom-css')) return;
+    var css = document.createElement('style');
+    css.id = 'cw-custom-css';
+    css.textContent = '#cw-wavoip-call-widget{position:fixed;top:16px;right:24px;z-index:99999;background:#1e1e2e;border-radius:16px;padding:14px 18px;box-shadow:0 8px 32px rgba(0,0,0,0.5);display:none;align-items:center;gap:14px;min-width:300px;border:1px solid rgba(255,255,255,0.08);animation:cwWavoipSlideIn .3s ease}#cw-wavoip-call-widget.visible{display:flex}@keyframes cwWavoipSlideIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}#cw-wavoip-call-widget .wavoip-pulse{width:10px;height:10px;border-radius:50%;background:#22c55e;animation:cwWavoipPulse 1.5s ease-in-out infinite;flex-shrink:0}@keyframes cwWavoipPulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.5)}50%{box-shadow:0 0 0 7px rgba(34,197,94,0)}}#cw-wavoip-call-widget .wavoip-info{flex:1;min-width:0}#cw-wavoip-call-widget .wavoip-name{font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#cw-wavoip-call-widget .wavoip-sub{font-size:11px;color:#94a3b8;margin-top:2px;font-variant-numeric:tabular-nums}#cw-wavoip-call-widget .wavoip-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}#cw-wavoip-call-widget .wavoip-btn{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease}#cw-wavoip-call-widget .wavoip-btn svg{width:15px;height:15px}#cw-wavoip-call-widget .wavoip-btn-mute{background:rgba(255,255,255,0.1);color:#f1f5f9}#cw-wavoip-call-widget .wavoip-btn-mute:hover{background:rgba(255,255,255,0.2)}#cw-wavoip-call-widget .wavoip-btn-mute.muted{background:rgba(239,68,68,0.25);color:#f87171}#cw-wavoip-call-widget .wavoip-btn-end{background:#ef4444;color:#fff}#cw-wavoip-call-widget .wavoip-btn-end:hover{background:#dc2626;transform:scale(1.05)}#cw-custom-menu-kanban,#cw-custom-menu-conexoes,#cw-custom-menu-chats,#cw-custom-menu-projetos,#cw-custom-menu-permissoes,#cw-custom-menu-chatbot,#cw-custom-menu-permissions{margin-top:0 !important;margin-bottom:0 !important}#cw-custom-menu-kanban .menu-icon,#cw-custom-menu-conexoes .menu-icon,#cw-custom-menu-chats .menu-icon,#cw-custom-menu-projetos .menu-icon,#cw-custom-menu-permissoes .menu-icon,#cw-custom-menu-chatbot .menu-icon,#cw-custom-menu-permissions .menu-icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}#cw-custom-menu-kanban .menu-icon svg,#cw-custom-menu-conexoes .menu-icon svg,#cw-custom-menu-chats .menu-icon svg,#cw-custom-menu-projetos .menu-icon svg,#cw-custom-menu-permissoes .menu-icon svg,#cw-custom-menu-chatbot .menu-icon svg,#cw-custom-menu-permissions .menu-icon svg{width:16px;height:16px}#cw-custom-panel{position:fixed;top:0;right:0;bottom:0;background:#121213;z-index:100;display:none;flex-direction:column}#cw-custom-panel.visible{display:flex}#cw-custom-panel .panel-body{flex:1;position:relative;background:#121213;overflow:hidden}#cw-custom-panel iframe{width:100%;height:100%;border:none;display:block}#cw-custom-panel .loading-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#121213;z-index:10}#cw-custom-panel .loading-overlay.hidden{display:none}#cw-custom-panel .spinner{width:48px;height:48px;border:4px solid #2d2d31;border-top-color:#1f93ff;border-radius:50%;animation:cwSpin .8s linear infinite}@keyframes cwSpin{to{transform:rotate(360deg)}}#cw-custom-panel .loading-text{margin-top:16px;color:#9ca3af;font-size:14px}#cw-custom-panel .error-overlay{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:#121213;text-align:center;padding:40px;z-index:10}#cw-custom-panel .error-overlay.visible{display:flex}#cw-custom-panel .error-icon{font-size:64px;margin-bottom:20px}#cw-custom-panel .error-title{font-size:20px;font-weight:600;color:#1f2d3d;margin:0 0 10px}#cw-custom-panel .error-text{color:#6e84a3;margin:0 0 24px;max-width:400px;line-height:1.5}#cw-custom-panel .error-btn{padding:12px 24px;background:#1f93ff;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}#cw-custom-panel .error-btn:hover{background:#1976d2}#cw-conexoes-badge{position:absolute;top:-5px;right:-6px;background:#e53e3e;color:#fff;border-radius:9999px;font-size:9px;font-weight:700;line-height:1;padding:1px 4px;min-width:14px;height:14px;display:none;align-items:center;justify-content:center;z-index:1;pointer-events:none}#cw-wavoip-incoming-widget{position:fixed;top:16px;right:24px;z-index:99999;background:#1e1e2e;border-radius:16px;padding:14px 18px;box-shadow:0 8px 32px rgba(0,0,0,0.5);display:none;align-items:center;gap:14px;min-width:300px;border:2px solid rgba(34,197,94,0.4);animation:cwWavoipSlideIn .3s ease}#cw-wavoip-incoming-widget.visible{display:flex;animation:cwWavoipSlideIn .3s ease,cwWavoipRingBorder 1.5s ease-in-out infinite}@keyframes cwWavoipRingBorder{0%,100%{border-color:rgba(34,197,94,0.3)}50%{border-color:rgba(34,197,94,0.9)}}#cw-wavoip-incoming-widget .wavoip-incoming-icon{width:36px;height:36px;border-radius:50%;background:rgba(34,197,94,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;animation:cwWavoipPulse 1.5s ease-in-out infinite}#cw-wavoip-incoming-widget .wavoip-incoming-icon svg{width:18px;height:18px}#cw-wavoip-incoming-widget .wavoip-info{flex:1;min-width:0}#cw-wavoip-incoming-widget .wavoip-name{font-size:13px;font-weight:600;color:#f1f5f9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#cw-wavoip-incoming-widget .wavoip-sub{font-size:11px;color:#94a3b8;margin-top:2px}#cw-wavoip-incoming-widget .wavoip-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}#cw-wavoip-incoming-widget .wavoip-btn{width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s ease}#cw-wavoip-incoming-widget .wavoip-btn svg{width:15px;height:15px}#cw-wavoip-incoming-widget .wavoip-btn-reject{background:#ef4444;color:#fff}#cw-wavoip-incoming-widget .wavoip-btn-reject:hover{background:#dc2626;transform:scale(1.05)}#cw-wavoip-incoming-widget .wavoip-btn-accept{background:#22c55e;color:#fff}#cw-wavoip-incoming-widget .wavoip-btn-accept:hover{background:#16a34a;transform:scale(1.05)}';
+    document.head.appendChild(css);
+  }
+
+  function getSidebarWidth() {
+    var aside = document.querySelector('aside.bg-n-solid-2, aside[class*="bg-n-solid"], aside.border-r, aside');
+    if (aside) {
+      return aside.getBoundingClientRect().right;
+    }
+    return 200;
+  }
+
+  function createPanel() {
+    if (document.getElementById('cw-custom-panel')) return;
+    var panel = document.createElement('div');
+    panel.id = 'cw-custom-panel';
+    panel.innerHTML = '<div class="panel-body"><div class="loading-overlay" id="cw-loading"><div class="spinner"></div><p class="loading-text">Carregando...</p></div><div class="error-overlay" id="cw-error"><div class="error-icon">🔒</div><h3 class="error-title">Site Protegido</h3><p class="error-text">Este site possui proteções que impedem a exibição incorporada.</p><button class="error-btn" onclick="window.cwCustomExternal()">↗️ Abrir em Nova Aba</button></div><iframe id="cw-iframe" src="about:blank" allow="microphone; camera"></iframe></div>';
+    document.body.appendChild(panel);
+
+    // Aplica tema imediatamente ao criar o painel
+    applyThemeToPanel();
+
+    // Adiciona listener para enviar tema quando iframe carregar
+    var iframe = document.getElementById('cw-iframe');
+    if (iframe) {
+      iframe.addEventListener('load', function() {
+        // Aguarda um pouco para garantir que o iframe está pronto
+        setTimeout(function() {
+          var theme = detectChatwootTheme();
+          console.log('[CW Theme] Enviando tema para iframe após load:', theme);
+          iframe.contentWindow.postMessage({
+            action: 'setTheme',
+            theme: theme
+          }, '*');
+        }, 100);
+      });
+    }
+  }
+
+  // ============================================================
+  // WIDGET FLUTUANTE DE CHAMADA WAVOIP
+  // ============================================================
+
+  var wavoipWidgetTimer = null;
+  var wavoipWidgetSeconds = 0;
+  var wavoipWidgetMuted = false;
+
+  function createWavoipCallWidget() {
+    if (document.getElementById('cw-wavoip-call-widget')) return;
+    var widget = document.createElement('div');
+    widget.id = 'cw-wavoip-call-widget';
+    widget.innerHTML =
+      '<div class="wavoip-pulse"></div>' +
+      '<div class="wavoip-info">' +
+        '<div class="wavoip-name" id="cw-wavoip-name">Ligando...</div>' +
+        '<div class="wavoip-sub" id="cw-wavoip-sub">00:00</div>' +
+      '</div>' +
+      '<div class="wavoip-actions">' +
+        '<button class="wavoip-btn wavoip-btn-mute" id="cw-wavoip-mute-btn" title="Mudo" onclick="window.cwWavoipToggleMute()">' +
+          '<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>' +
+        '</button>' +
+        '<button class="wavoip-btn wavoip-btn-end" title="Encerrar" onclick="window.cwWavoipEndCall()">' +
+          '<svg fill="currentColor" viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z" transform="rotate(135 12 12)"/></svg>' +
+        '</button>' +
+      '</div>';
+    document.body.appendChild(widget);
+  }
+
+  function formatWavoipTime(s) {
+    var m = Math.floor(s / 60);
+    var sec = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  window.cwWavoipShowCallWidget = function(contactName, phone) {
+    createWavoipCallWidget();
+    wavoipWidgetSeconds = 0;
+    wavoipWidgetMuted = false;
+    var nameEl = document.getElementById('cw-wavoip-name');
+    var subEl = document.getElementById('cw-wavoip-sub');
+    var muteBtn = document.getElementById('cw-wavoip-mute-btn');
+    if (nameEl) nameEl.textContent = contactName || phone || 'Ligando...';
+    if (subEl) subEl.textContent = phone ? phone + ' · 00:00' : '00:00';
+    if (muteBtn) muteBtn.classList.remove('muted');
+    var widget = document.getElementById('cw-wavoip-call-widget');
+    if (widget) widget.classList.add('visible');
+    if (wavoipWidgetTimer) clearInterval(wavoipWidgetTimer);
+    wavoipWidgetTimer = setInterval(function() {
+      wavoipWidgetSeconds++;
+      var sub = document.getElementById('cw-wavoip-sub');
+      if (sub) sub.textContent = (phone ? phone + ' · ' : '') + formatWavoipTime(wavoipWidgetSeconds);
+    }, 1000);
+  };
+
+  window.cwWavoipHideCallWidget = function() {
+    if (wavoipWidgetTimer) { clearInterval(wavoipWidgetTimer); wavoipWidgetTimer = null; }
+    wavoipWidgetSeconds = 0;
+    wavoipWidgetMuted = false;
+    var widget = document.getElementById('cw-wavoip-call-widget');
+    if (widget) widget.classList.remove('visible');
+  };
+
+  window.cwWavoipShowError = function(msg) {
+    var id = 'cw-wavoip-error-toast';
+    var existing = document.getElementById(id);
+    if (existing) existing.remove();
+    var toast = document.createElement('div');
+    toast.id = id;
+    toast.textContent = '📵 ' + msg;
+    toast.style.cssText = 'position:fixed;top:16px;right:24px;z-index:99999;background:#ef4444;color:#fff;font-size:13px;font-weight:500;padding:10px 16px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.3);max-width:320px;animation:cwWavoipSlideIn .3s ease';
+    document.body.appendChild(toast);
+    setTimeout(function() { if (toast.parentNode) toast.remove(); }, 5000);
+  };
+
+  window.cwWavoipToggleMute = function() {
+    var iframe = document.getElementById('cw-iframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'WAVOIP_TOGGLE_MUTE' }, '*');
+    }
+  };
+
+  window.cwWavoipEndCall = function() {
+    var iframe = document.getElementById('cw-iframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'WAVOIP_END_CALL' }, '*');
+    }
+    window.cwWavoipHideCallWidget();
+  };
+
+  // ============================================================
+  // WIDGET FLUTUANTE DE CHAMADA ENTRANTE WAVOIP
+  // ============================================================
+
+  function createWavoipIncomingWidget() {
+    if (document.getElementById('cw-wavoip-incoming-widget')) return;
+    var widget = document.createElement('div');
+    widget.id = 'cw-wavoip-incoming-widget';
+    widget.innerHTML =
+      '<div class="wavoip-incoming-icon">' +
+        '<svg fill="#22c55e" viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>' +
+      '</div>' +
+      '<div class="wavoip-info">' +
+        '<div class="wavoip-name" id="cw-wavoip-incoming-name">Chamada entrante</div>' +
+        '<div class="wavoip-sub" id="cw-wavoip-incoming-sub">WhatsApp</div>' +
+      '</div>' +
+      '<div class="wavoip-actions">' +
+        '<button class="wavoip-btn wavoip-btn-reject" title="Rejeitar" onclick="window.cwWavoipRejectCall()">' +
+          '<svg fill="currentColor" viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z" transform="rotate(135 12 12)"/></svg>' +
+        '</button>' +
+        '<button class="wavoip-btn wavoip-btn-accept" title="Atender" onclick="window.cwWavoipAcceptCall()">' +
+          '<svg fill="currentColor" viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>' +
+        '</button>' +
+      '</div>';
+    document.body.appendChild(widget);
+  }
+
+  window.cwWavoipShowIncomingWidget = function(displayName, phone) {
+    createWavoipIncomingWidget();
+    var nameEl = document.getElementById('cw-wavoip-incoming-name');
+    var subEl = document.getElementById('cw-wavoip-incoming-sub');
+    if (nameEl) nameEl.textContent = displayName || phone || 'Número desconhecido';
+    if (subEl) subEl.textContent = (phone && displayName && phone !== displayName) ? phone : 'WhatsApp';
+    var widget = document.getElementById('cw-wavoip-incoming-widget');
+    if (widget) widget.classList.add('visible');
+  };
+
+  window.cwWavoipHideIncomingWidget = function() {
+    var widget = document.getElementById('cw-wavoip-incoming-widget');
+    if (widget) widget.classList.remove('visible');
+  };
+
+  window.cwWavoipAcceptCall = function() {
+    var iframe = document.getElementById('cw-iframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'WAVOIP_ACCEPT_CALL' }, '*');
+    }
+    window.cwWavoipHideIncomingWidget();
+  };
+
+  window.cwWavoipRejectCall = function() {
+    var iframe = document.getElementById('cw-iframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'WAVOIP_REJECT_CALL' }, '*');
+    }
+    window.cwWavoipHideIncomingWidget();
+  };
+
+  // Escuta mensagens do iframe para fechar o painel e controlar widget Wavoip
+  window.addEventListener('message', function(event) {
+    // Verifica se a mensagem vem do KanbanCW
+    if (event.data && event.data.action === 'closePanel') {
+      console.log('[CW Menu] Recebeu mensagem para fechar painel');
+      window.cwCustomClose();
+    }
+    if (event.data && event.data.type === 'WAVOIP_CALL_STARTED') {
+      console.log('[Wavoip Widget] Chamada iniciada — exibindo widget');
+      window._cwWavoipCalling = false;
+      window.cwWavoipShowCallWidget(event.data.contactName || event.data.phone, event.data.phone);
+    }
+    if (event.data && event.data.type === 'WAVOIP_CALL_FAILED') {
+      console.log('[Wavoip Widget] Chamada falhou:', event.data.message);
+      window._cwWavoipCalling = false;
+      window.cwWavoipShowError(event.data.message || 'Não foi possível realizar a chamada');
+    }
+    if (event.data && event.data.type === 'WAVOIP_CALL_ENDED') {
+      console.log('[Wavoip Widget] Chamada encerrada — ocultando widget');
+      window.cwWavoipHideCallWidget();
+    }
+    if (event.data && event.data.type === 'WAVOIP_MUTED') {
+      wavoipWidgetMuted = event.data.isMuted;
+      var muteBtn = document.getElementById('cw-wavoip-mute-btn');
+      if (muteBtn) {
+        if (wavoipWidgetMuted) {
+          muteBtn.classList.add('muted');
+          muteBtn.title = 'Ativar microfone';
+        } else {
+          muteBtn.classList.remove('muted');
+          muteBtn.title = 'Silenciar';
+        }
+      }
+    }
+    if (event.data && event.data.type === 'WAVOIP_INCOMING_CALL') {
+      console.log('[Wavoip Widget] Chamada entrante — exibindo widget', event.data.phone);
+      window.cwWavoipShowIncomingWidget(event.data.displayName || event.data.phone, event.data.phone);
+    }
+    if (event.data && event.data.type === 'WAVOIP_INCOMING_CALL_ENDED') {
+      console.log('[Wavoip Widget] Chamada entrante encerrada — ocultando widget');
+      window.cwWavoipHideIncomingWidget();
+    }
+  });
+
+  // ============================================================
+  // DETECÇÃO AUTOMÁTICA DE TEMA (DARK/LIGHT MODE)
+  // ============================================================
+
+  function detectChatwootTheme() {
+    // Chatwoot adiciona classe 'dark' no body quando está em dark mode
+    return document.body.classList.contains('dark') ? 'dark' : 'light';
+  }
+
+  function applyThemeToPanel() {
+    var panel = document.getElementById('cw-custom-panel');
+    if (!panel) return;
+
+    var theme = detectChatwootTheme();
+    var isDark = theme === 'dark';
+
+    console.log('[CW Theme] Aplicando tema:', theme);
+
+    // Aplica tema no painel
+    if (isDark) {
+      panel.classList.add('dark-mode');
+      panel.style.background = '#17171a';
+
+      // Atualiza loading overlay
+      var loading = panel.querySelector('.loading-overlay');
+      if (loading) {
+        loading.style.background = '#121213';
+        loading.style.color = '#e5e7eb';
+      }
+
+      var loadingText = panel.querySelector('.loading-text');
+      if (loadingText) {
+        loadingText.style.color = '#9ca3af';
+      }
+
+      // Atualiza error overlay
+      var error = panel.querySelector('.error-overlay');
+      if (error) {
+        error.style.background = '#121213';
+      }
+
+      var errorTitle = panel.querySelector('.error-title');
+      if (errorTitle) {
+        errorTitle.style.color = '#f3f4f6';
+      }
+
+      var errorText = panel.querySelector('.error-text');
+      if (errorText) {
+        errorText.style.color = '#9ca3af';
+      }
+    } else {
+      panel.classList.remove('dark-mode');
+      panel.style.background = '#fff';
+
+      var loading = panel.querySelector('.loading-overlay');
+      if (loading) {
+        loading.style.background = '#fff';
+        loading.style.color = '#1f2d3d';
+      }
+
+      var loadingText = panel.querySelector('.loading-text');
+      if (loadingText) {
+        loadingText.style.color = '#6e84a3';
+      }
+
+      var error = panel.querySelector('.error-overlay');
+      if (error) {
+        error.style.background = '#fff';
+      }
+
+      var errorTitle = panel.querySelector('.error-title');
+      if (errorTitle) {
+        errorTitle.style.color = '#1f2d3d';
+      }
+
+      var errorText = panel.querySelector('.error-text');
+      if (errorText) {
+        errorText.style.color = '#6e84a3';
+      }
+    }
+
+    // Envia mensagem para o iframe para aplicar tema também
+    var iframe = document.getElementById('cw-iframe');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({
+        action: 'setTheme',
+        theme: theme
+      }, '*');
+    }
+  }
+
+  // Observa mudanças de tema no Chatwoot
+  var themeObserver = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        console.log('[CW Theme] Tema do Chatwoot mudou');
+        applyThemeToPanel();
+      }
+    });
+  });
+
+  // Inicia observação do body para detectar mudanças de tema
+  function startThemeObserver() {
+    themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    console.log('[CW Theme] Observer iniciado');
+  }
+
+  // Aplica tema inicial (imediato + reforço após 300ms)
+  applyThemeToPanel();
+  startThemeObserver();
+  setTimeout(function() {
+    applyThemeToPanel();
+  }, 300);
+
+  function getAuthFromCookie() {
+    var cookies = document.cookie.split(';');
+    for (var i = 0; i < cookies.length; i++) {
+      var cookie = cookies[i].trim();
+      if (cookie.indexOf('cw_d_session_info=') === 0) {
+        try {
+          var value = cookie.substring('cw_d_session_info='.length);
+          var parsed = JSON.parse(decodeURIComponent(value));
+          if (parsed['access-token'] && parsed['client'] && parsed['uid']) {
+            return parsed;
+          }
+        } catch (e) {
+          console.log('[CW Menu] Erro ao parsear cookie:', e);
+        }
+      }
+    }
+    return null;
+  }
+
+  function getAccountId() {
+    var match = location.pathname.match(/\/accounts\/(\d+)/);
+    return match ? match[1] : null;
+  }
+
+  var conexoesBadgeTimer = null;
+
+  async function updateConexoesBadge() {
+    var authHeaders = getAuthFromCookie();
+    var accountId = getAccountId();
+    if (!authHeaders || !accountId) return;
+    try {
+      var res = await fetch('/api/v1/accounts/' + accountId + '/conversations?status=pending&page=1', {
+        headers: {
+          'access-token': authHeaders['access-token'],
+          'token-type': authHeaders['token-type'] || 'Bearer',
+          'client': authHeaders['client'],
+          'expiry': authHeaders['expiry'] || '',
+          'uid': authHeaders['uid']
+        }
+      });
+      if (!res.ok) return;
+      var data = await res.json();
+      var count = (data.data && data.data.meta && data.data.meta.all_count) || 0;
+      var badge = document.getElementById('cw-conexoes-badge');
+      if (badge) {
+        if (count > 0) {
+          badge.style.display = 'flex';
+          badge.textContent = count > 99 ? '99+' : String(count);
+        } else {
+          badge.style.display = 'none';
+        }
+      }
+    } catch (e) {
+      console.log('[CW Conexoes] Erro ao buscar badge:', e);
+    }
+  }
+
+  function startConexoesBadge() {
+    updateConexoesBadge();
+    if (conexoesBadgeTimer) clearInterval(conexoesBadgeTimer);
+    conexoesBadgeTimer = setInterval(updateConexoesBadge, 30000);
+  }
+
+  window.cwCustomOpen = function(path) {
+    path = path || '';
+    panelOpen = true;
+    currentPath = path;
+    var panel = document.getElementById('cw-custom-panel');
+    var iframe = document.getElementById('cw-iframe');
+    var loading = document.getElementById('cw-loading');
+    var error = document.getElementById('cw-error');
+    var kanbanItem = document.getElementById('cw-custom-menu-kanban');
+    var conexoesItem = document.getElementById('cw-custom-menu-conexoes');
+    var chatsItem = document.getElementById('cw-custom-menu-chats');
+    var projetosItem = document.getElementById('cw-custom-menu-projetos');
+    var permissoesItem = document.getElementById('cw-custom-menu-permissoes');
+    var chatbotItem = document.getElementById('cw-custom-menu-chatbot');
+    var permissionsItem = document.getElementById('cw-custom-menu-permissions');
+
+    panel.style.left = getSidebarWidth() + 'px';
+    panel.classList.add('visible');
+
+    // Só recarrega o iframe se a URL realmente mudou (evita matar chamada Wavoip ativa)
+    var targetSrc = KANBAN_URL + path;
+    var currentSrc = iframe.src || '';
+    // Normaliza: remove trailing slash para comparação
+    var normalizedTarget = targetSrc.replace(/\/$/, '');
+    var normalizedCurrent = currentSrc.replace(/\/$/, '');
+    if (normalizedCurrent !== normalizedTarget) {
+      loading.classList.remove('hidden');
+      error.classList.remove('visible');
+      iframe.src = targetSrc;
+    } else {
+      // Iframe já está na URL correta, só oculta loading
+      loading.classList.add('hidden');
+    }
+
+    // Aplica tema do Chatwoot ao painel
+    applyThemeToPanel();
+
+    // Remove 'active' de todos os itens primeiro
+    if (kanbanItem) kanbanItem.classList.remove('active');
+    if (conexoesItem) conexoesItem.classList.remove('active');
+    if (chatsItem) chatsItem.classList.remove('active');
+    if (projetosItem) projetosItem.classList.remove('active');
+    if (permissoesItem) permissoesItem.classList.remove('active');
+    if (chatbotItem) chatbotItem.classList.remove('active');
+    if (permissionsItem) permissionsItem.classList.remove('active');
+
+    // Adiciona 'active' apenas no item correto
+    if (path === '/conexoes' && conexoesItem) {
+      conexoesItem.classList.add('active');
+    } else if (path === '/chats' && chatsItem) {
+      chatsItem.classList.add('active');
+    } else if (path === '/projects' && projetosItem) {
+      projetosItem.classList.add('active');
+    } else if (path === '/permissions' && permissoesItem) {
+      permissoesItem.classList.add('active');
+    } else if (path === '/chatbot' && chatbotItem) {
+      chatbotItem.classList.add('active');
+    } else if (path === '/admin/permissions' && permissionsItem) {
+      permissionsItem.classList.add('active');
+    } else if (kanbanItem) {
+      kanbanItem.classList.add('active');
+    }
+
+    iframe.onload = function() {
+      loading.classList.add('hidden');
+      var auth = getAuthFromCookie();
+      if (auth && iframe.contentWindow) {
+        var accountId = getAccountId();
+        console.log('[CW Menu] Enviando token para iframe... accountId:', accountId);
+        iframe.contentWindow.postMessage({
+          type: 'AUTH_TOKEN',
+          payload: Object.assign({}, auth, { account_id: accountId })
+        }, '*');
+      }
+    };
+
+    setTimeout(function() { if (!loading.classList.contains('hidden')) { loading.classList.add('hidden'); error.classList.add('visible'); } }, 8000);
+  };
+
+  window.cwCustomClose = function() {
+    panelOpen = false;
+    currentPath = null;
+    var panel = document.getElementById('cw-custom-panel');
+    var iframe = document.getElementById('cw-iframe');
+    var kanbanItem = document.getElementById('cw-custom-menu-kanban');
+    var conexoesItem = document.getElementById('cw-custom-menu-conexoes');
+    var chatsItem = document.getElementById('cw-custom-menu-chats');
+    var projetosItem = document.getElementById('cw-custom-menu-projetos');
+    var permissoesItem = document.getElementById('cw-custom-menu-permissoes');
+    var chatbotItem = document.getElementById('cw-custom-menu-chatbot');
+    var permissionsItem = document.getElementById('cw-custom-menu-permissions');
+
+    panel.classList.remove('visible');
+    // Não descarrega o iframe — WavoipContext precisa ficar ativo para receber chamadas
+    if (kanbanItem) kanbanItem.classList.remove('active');
+    if (conexoesItem) conexoesItem.classList.remove('active');
+    if (chatsItem) chatsItem.classList.remove('active');
+    if (projetosItem) projetosItem.classList.remove('active');
+    if (permissoesItem) permissoesItem.classList.remove('active');
+    if (chatbotItem) chatbotItem.classList.remove('active');
+    if (permissionsItem) permissionsItem.classList.remove('active');
+  };
+
+  window.cwCustomExternal = function() { window.open(KANBAN_URL, '_blank'); };
+
+  function cwToggle(path) {
+    window.cwCustomOpen(path);
+  }
+
+  window.cwCustomToggleKanban = function() { cwToggle(''); };
+  window.cwCustomToggleConexoes = function() { cwToggle('/conexoes'); };
+  window.cwCustomToggleChats = function() { cwToggle('/chats'); };
+  window.cwCustomToggleProjetos = function() { cwToggle('/projects'); };
+  window.cwCustomTogglePermissoes = function() { cwToggle('/permissions'); };
+  window.cwCustomTogglePermissions = function() { cwToggle('/admin/permissions'); };
+  window.cwCustomToggleChatbot = function() { cwToggle('/chatbot'); };
+
+  function reloadIframeForNewAccount(newAccountId) {
+    var iframe = document.getElementById('cw-iframe');
+    if (!iframe) return;
+    console.log('[CW Menu] Troca de empresa detectada:', lastAccountId, '->', newAccountId, '— recarregando iframe');
+    lastAccountId = newAccountId;
+    // Fecha o painel se estiver aberto
+    if (panelOpen) window.cwCustomClose();
+    // Envia mensagem para o React recarregar (método mais confiável)
+    // O frontend detecta account_id diferente e faz window.location.reload()
+    var auth = getAuthFromCookie();
+    if (auth && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({
+        type: 'AUTH_TOKEN',
+        payload: Object.assign({}, auth, { account_id: newAccountId })
+      }, '*');
+    }
+    // Fallback: força reload via cache-buster na src
+    setTimeout(function() {
+      try {
+        iframe.src = KANBAN_URL + '/?_acc=' + newAccountId + '&_t=' + Date.now();
+      } catch(e) {
+        console.warn('[CW Menu] Fallback reload falhou:', e);
+      }
+    }, 300);
+  }
+
+  function closeOnNavigation() {
+    var currentUrl = location.href;
+    if (currentUrl === lastUrl) return;
+    lastUrl = currentUrl;
+
+    var currentAccountId = getAccountId();
+    // Detecta troca de empresa (account_id mudou na URL)
+    if (lastAccountId && currentAccountId && currentAccountId !== lastAccountId) {
+      reloadIframeForNewAccount(currentAccountId);
+    } else if (panelOpen) {
+      window.cwCustomClose();
+    }
+  }
+
+  function setupNavigationDetection() {
+    // Inicializa com a conta atual
+    lastAccountId = getAccountId();
+    window.addEventListener('popstate', closeOnNavigation);
+    var origPush = history.pushState;
+    var origReplace = history.replaceState;
+    history.pushState = function() { origPush.apply(this, arguments); closeOnNavigation(); };
+    history.replaceState = function() { origReplace.apply(this, arguments); closeOnNavigation(); };
+    document.addEventListener('click', function(e) {
+      if (!panelOpen) return;
+      var link = e.target.closest('a');
+      if (link && !link.closest('#cw-custom-panel')) {
+        setTimeout(closeOnNavigation, 100);
+      }
+    }, true);
+    // Polling de fallback: detecta troca de conta mesmo sem evento de navegação
+    setInterval(function() {
+      var currentAccountId = getAccountId();
+      if (!currentAccountId) return;
+      if (!lastAccountId) { lastAccountId = currentAccountId; return; }
+      if (currentAccountId !== lastAccountId) {
+        reloadIframeForNewAccount(currentAccountId);
+      }
+    }, 2000);
+  }
+
+  async function checkIfSuperAdmin() {
+    var authHeaders = getAuthFromCookie();
+    if (!authHeaders) {
+      console.log('[CW Menu] Sem authHeaders, não é SuperAdmin');
+      return false;
+    }
+
+    try {
+      // Usa URL relativa pois o script já está rodando no Chatwoot
+      var res = await fetch('/api/v1/profile', {
+        headers: {
+          'access-token': authHeaders['access-token'],
+          'token-type': authHeaders['token-type'] || 'Bearer',
+          'client': authHeaders['client'],
+          'expiry': authHeaders['expiry'] || '',
+          'uid': authHeaders['uid']
+        }
+      });
+
+      if (!res.ok) {
+        console.log('[CW Menu] Erro na resposta do profile:', res.status);
+        return false;
+      }
+      var data = await res.json();
+      console.log('[CW Menu] Profile type:', data.type);
+      return data.type === 'SuperAdmin';
+    } catch (err) {
+      console.log('[CW Menu] Erro ao verificar SuperAdmin:', err);
+      return false;
+    }
+  }
+
+  async function checkIfAccountAdmin() {
+    var authHeaders = getAuthFromCookie();
+    if (!authHeaders) {
+      return false;
+    }
+
+    try {
+      var res = await fetch('/api/v1/profile', {
+        headers: {
+          'access-token': authHeaders['access-token'],
+          'token-type': authHeaders['token-type'] || 'Bearer',
+          'client': authHeaders['client'],
+          'expiry': authHeaders['expiry'] || '',
+          'uid': authHeaders['uid']
+        }
+      });
+
+      if (!res.ok) {
+        return false;
+      }
+      var data = await res.json();
+      console.log('[CW Menu] User role:', data.role);
+      return data.role === 'administrator';
+    } catch (err) {
+      console.log('[CW Menu] Erro ao verificar role:', err);
+      return false;
+    }
+  }
+
+  async function checkEnabledFeatures() {
+    var authHeaders = getAuthFromCookie();
+    if (!authHeaders) {
+      console.log('[CW Menu] Sem authHeaders, retornando features desabilitadas');
+      return { kanbanEnabled: false, chatsInternosEnabled: false, conexoesEnabled: false, projectsEnabled: false, chatbotFlowsEnabled: false };
+    }
+
+    try {
+      // Busca features habilitadas no backend KanbanCW
+      var res = await fetch(KANBAN_URL + '/api/features', {
+        headers: {
+          'access-token': authHeaders['access-token'],
+          'token-type': authHeaders['token-type'] || 'Bearer',
+          'client': authHeaders['client'],
+          'expiry': authHeaders['expiry'] || '',
+          'uid': authHeaders['uid']
+        }
+      });
+
+      if (!res.ok) {
+        console.log('[CW Menu] Erro ao buscar features:', res.status);
+        // Em caso de erro, habilita tudo (fail-open)
+        return { kanbanEnabled: true, chatsInternosEnabled: true, conexoesEnabled: true };
+      }
+
+      var result = await res.json();
+      var features = result.data || {};
+      console.log('[CW Menu] Features habilitadas:', features);
+      return {
+        kanbanEnabled: features.kanbanEnabled !== false,
+        chatsInternosEnabled: features.chatsInternosEnabled !== false,
+        conexoesEnabled: features.conexoesEnabled !== false,
+        projectsEnabled: features.projectsEnabled !== false,
+        chatbotFlowsEnabled: features.chatbotFlowsEnabled !== false
+      };
+    } catch (err) {
+      console.log('[CW Menu] Erro ao verificar features:', err);
+      // Em caso de erro, habilita tudo (fail-open)
+      return { kanbanEnabled: true, chatsInternosEnabled: true, conexoesEnabled: true, projectsEnabled: true, chatbotFlowsEnabled: true };
+    }
+  }
+
+  async function checkUserPermissions() {
+    try {
+      var authHeaders = getAuthFromCookie();
+      if (!authHeaders || !authHeaders['access-token']) {
+        console.log('[CW Menu] Sem headers de auth, usando permissões padrão');
+        return {
+          kanbanAccess: true,
+          conexoesAccess: true,
+          chatsInternosAccess: true,
+          projectsAccess: true,
+          chatbotFlowsAccess: true,
+          permissoesAccess: false
+        };
+      }
+
+      var res = await fetch(KANBAN_URL + '/api/permissions/me', {
+        headers: {
+          'access-token': authHeaders['access-token'],
+          'token-type': authHeaders['token-type'] || 'Bearer',
+          'client': authHeaders['client'],
+          'expiry': authHeaders['expiry'] || '',
+          'uid': authHeaders['uid']
+        }
+      });
+
+      if (!res.ok) {
+        console.log('[CW Menu] Erro ao buscar permissões do usuário:', res.status);
+        // Em caso de erro, habilita tudo (fail-open)
+        return {
+          kanbanAccess: true,
+          conexoesAccess: true,
+          chatsInternosAccess: true,
+          projectsAccess: true,
+          chatbotFlowsAccess: true,
+          permissoesAccess: false
+        };
+      }
+
+      var result = await res.json();
+      var permissions = result.data || {};
+      console.log('[CW Menu] Permissões do usuário:', permissions);
+      return {
+        kanbanAccess: permissions.kanbanAccess !== false,
+        conexoesAccess: permissions.conexoesAccess !== false,
+        chatsInternosAccess: permissions.chatsInternosAccess !== false,
+        projectsAccess: permissions.projectsAccess !== false,
+        chatbotFlowsAccess: permissions.chatbotFlowsAccess !== false,
+        permissoesAccess: permissions.permissoesAccess === true
+      };
+    } catch (err) {
+      console.log('[CW Menu] Erro ao verificar permissões:', err);
+      // Em caso de erro, habilita tudo (fail-open)
+      return {
+        kanbanAccess: true,
+        conexoesAccess: true,
+        chatsInternosAccess: true,
+        projectsAccess: true,
+        chatbotFlowsAccess: true,
+        permissoesAccess: false
+      };
+    }
+  }
+
+  async function addMenuItems() {
+    if (menuItemsAdded) return true;
+
+    var mainNav = document.querySelector('aside nav ul.list-none, aside nav > ul, nav.grid ul');
+    if (!mainNav) {
+      console.log('[CW Menu] Não encontrou ul do menu principal');
+      return false;
+    }
+
+    var allLi = mainNav.querySelectorAll(':scope > li');
+    if (allLi.length === 0) {
+      console.log('[CW Menu] Não encontrou itens li no menu');
+      return false;
+    }
+
+    var refLi = null;
+    var refLink = null;
+    var configLi = null;
+    for (var i = 0; i < allLi.length; i++) {
+      var text = allLi[i].textContent.toLowerCase();
+      if (text.includes('configurações') || text.includes('settings')) {
+        configLi = allLi[i];
+      }
+      if (text.includes('relatório') || text.includes('report') || text.includes('campanha') || text.includes('campaign')) {
+        refLi = allLi[i];
+        refLink = refLi.querySelector('a, div[role="button"]');
+        break;
+      }
+    }
+
+    if (!refLi) {
+      refLi = allLi[allLi.length - 1];
+      refLink = refLi.querySelector('a, div[role="button"]');
+    }
+
+    if (!refLi || !refLink) {
+      console.log('[CW Menu] Não encontrou item de referência');
+      return false;
+    }
+
+    // Verifica quais features estão habilitadas (nível de conta)
+    var features = await checkEnabledFeatures();
+    console.log('[CW Menu] Features da conta:', features);
+
+    // Verifica permissões do usuário (nível de usuário)
+    var permissions = await checkUserPermissions();
+    console.log('[CW Menu] Permissões do usuário:', permissions);
+
+    // Menu Kanban (se feature habilitada E usuário tem permissão)
+    if (features.kanbanEnabled && permissions.kanbanAccess) {
+      var kanbanLi = document.createElement('li');
+      kanbanLi.className = refLi.className;
+      var kanbanItem = document.createElement('div');
+      kanbanItem.id = 'cw-custom-menu-kanban';
+      kanbanItem.className = refLink.className;
+      kanbanItem.setAttribute('role', 'button');
+      kanbanItem.style.cursor = 'pointer';
+      kanbanItem.innerHTML = '<div class="relative flex items-center gap-2"><div class="flex items-center gap-1.5 flex-grow min-w-0"><span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg></span><span class="text-sm font-medium leading-5 truncate">Kanban</span></div></div>';
+      kanbanItem.onclick = function(e) { e.preventDefault(); window.cwCustomToggleKanban(); };
+      kanbanLi.appendChild(kanbanItem);
+      mainNav.insertBefore(kanbanLi, refLi);
+      console.log('[CW Menu] Menu Kanban adicionado');
+    } else {
+      console.log('[CW Menu] Menu Kanban NÃO adicionado (desabilitado)');
+    }
+
+    // Menu Conexões (se feature habilitada E usuário tem permissão)
+    if (features.conexoesEnabled && permissions.conexoesAccess) {
+      var conexoesLi = document.createElement('li');
+      conexoesLi.className = refLi.className;
+      var conexoesItem = document.createElement('div');
+      conexoesItem.id = 'cw-custom-menu-conexoes';
+      conexoesItem.className = refLink.className;
+      conexoesItem.setAttribute('role', 'button');
+      conexoesItem.style.cursor = 'pointer';
+      conexoesItem.innerHTML = '<div class="relative flex items-center gap-2"><div class="flex items-center gap-1.5 flex-grow min-w-0"><span class="menu-icon" style="position:relative;display:inline-flex;align-items:center;justify-content:center"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg><span id="cw-conexoes-badge"></span></span><span class="text-sm font-medium leading-5 truncate">Conexões</span></div></div>';
+      conexoesItem.onclick = function(e) { e.preventDefault(); window.cwCustomToggleConexoes(); };
+      conexoesLi.appendChild(conexoesItem);
+      mainNav.insertBefore(conexoesLi, refLi);
+      console.log('[CW Menu] Menu Conexões adicionado');
+      // Inicia polling do badge de notificação
+      setTimeout(startConexoesBadge, 1500);
+    } else {
+      console.log('[CW Menu] Menu Conexões NÃO adicionado (desabilitado)');
+    }
+
+    // Menu Chats Internos (se feature habilitada E usuário tem permissão)
+    if (features.chatsInternosEnabled && permissions.chatsInternosAccess) {
+      var chatsLi = document.createElement('li');
+      chatsLi.className = refLi.className;
+      var chatsItem = document.createElement('div');
+      chatsItem.id = 'cw-custom-menu-chats';
+      chatsItem.className = refLink.className;
+      chatsItem.setAttribute('role', 'button');
+      chatsItem.style.cursor = 'pointer';
+      chatsItem.innerHTML = '<div class="relative flex items-center gap-2"><div class="flex items-center gap-1.5 flex-grow min-w-0"><span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg></span><span class="text-sm font-medium leading-5 truncate">Chats Internos</span></div></div>';
+      chatsItem.onclick = function(e) { e.preventDefault(); window.cwCustomToggleChats(); };
+      chatsLi.appendChild(chatsItem);
+      mainNav.insertBefore(chatsLi, refLi);
+      console.log('[CW Menu] Menu Chats Internos adicionado');
+    } else {
+      console.log('[CW Menu] Menu Chats Internos NÃO adicionado (desabilitado)');
+    }
+
+    // Menu Projetos (se feature habilitada E usuário tem permissão)
+    if (features.projectsEnabled && permissions.projectsAccess) {
+      var projetosLi = document.createElement('li');
+    projetosLi.className = refLi.className;
+    var projetosItem = document.createElement('div');
+    projetosItem.id = 'cw-custom-menu-projetos';
+    projetosItem.className = refLink.className;
+    projetosItem.setAttribute('role', 'button');
+    projetosItem.style.cursor = 'pointer';
+    projetosItem.innerHTML = '<div class="relative flex items-center gap-2"><div class="flex items-center gap-1.5 flex-grow min-w-0"><span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg></span><span class="text-sm font-medium leading-5 truncate">Projetos</span></div></div>';
+    projetosItem.onclick = function(e) { e.preventDefault(); window.cwCustomToggleProjetos(); };
+      projetosLi.appendChild(projetosItem);
+      mainNav.insertBefore(projetosLi, refLi);
+      console.log('[CW Menu] Menu Projetos adicionado');
+    } else {
+      console.log('[CW Menu] Menu Projetos NÃO adicionado (feature:', features.projectsEnabled, ', permissão:', permissions.projectsAccess, ')');
+    }
+
+    // Botão Permissões Extras na página de Funções Personalizadas
+    var isAccountAdmin = await checkIfAccountAdmin();
+    if (isAccountAdmin || permissions.permissoesAccess) {
+      console.log('[CW Menu] Configurando botão Permissões Extras na página de Funções Personalizadas');
+
+      // Função para adicionar botão na página
+      function addPermissoesButton() {
+        // Verifica se já adicionou
+        if (document.getElementById('cw-custom-permissoes-button')) {
+          return;
+        }
+
+        // Procura o botão "Agregar função personalizada" ou "Add custom role"
+        var buttons = document.querySelectorAll('button');
+        var addRoleButton = null;
+
+        for (var i = 0; i < buttons.length; i++) {
+          var text = buttons[i].textContent.toLowerCase();
+          if (text.includes('adicionar função personalizada') || text.includes('add custom role')) {
+            addRoleButton = buttons[i];
+            break;
+          }
+        }
+
+        if (addRoleButton && addRoleButton.parentElement) {
+          console.log('[CW Menu] Botão de adicionar função encontrado, criando botão Permissões Extras');
+
+          // Cria o botão de Permissões Extras
+          var permissoesButton = document.createElement('button');
+          permissoesButton.id = 'cw-custom-permissoes-button';
+          permissoesButton.className = addRoleButton.className;
+          permissoesButton.type = 'button';
+          permissoesButton.style.marginLeft = '8px';
+
+          // Ícone de escudo/permissões + texto
+          permissoesButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><circle cx="12" cy="12" r="3"></circle><path d="M12 1v6m0 6v6m5.657-11.657l-4.243 4.243m0 6l-4.243 4.243M1 12h6m6 0h6m-1.343-5.657l-4.243 4.243m0 6l-4.243 4.243"></path></svg><span>Permissões Extras</span>';
+
+          permissoesButton.onclick = function(e) {
+            e.preventDefault();
+            window.cwCustomTogglePermissoes();
+          };
+
+          // Insere o botão ao lado do botão existente
+          addRoleButton.parentElement.appendChild(permissoesButton);
+          console.log('[CW Menu] Botão Permissões Extras adicionado');
+        }
+      }
+
+      // Observer para detectar quando a página de Funções Personalizadas é carregada
+      var pageObserver = new MutationObserver(function() {
+        // Verifica se está na página de custom roles
+        var path = window.location.pathname;
+        if (path.includes('custom_role') || path.includes('custom-role')) {
+          addPermissoesButton();
+        }
+      });
+
+      // Observa mudanças no body
+      pageObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+
+      // Tenta adicionar imediatamente se já estiver na página
+      setTimeout(addPermissoesButton, 1000);
+    }
+
+    // Menu Chatbot Flows (se feature habilitada E usuário tem permissão)
+    if (features.chatbotFlowsEnabled && permissions.chatbotFlowsAccess) {
+      var chatbotLi = document.createElement('li');
+      chatbotLi.className = refLi.className;
+      var chatbotItem = document.createElement('div');
+      chatbotItem.id = 'cw-custom-menu-chatbot';
+      chatbotItem.className = refLink.className;
+      chatbotItem.setAttribute('role', 'button');
+      chatbotItem.style.cursor = 'pointer';
+      chatbotItem.innerHTML = '<div class="relative flex items-center gap-2"><div class="flex items-center gap-1.5 flex-grow min-w-0"><span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 640 512" fill="currentColor"><path d="M128 32C92.7 32 64 60.7 64 96v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H128zM512 96c0 53-43 96-96 96H346.5l-45.3 128H384c53 0 96 43 96 96s-43 96-96 96H256c-53 0-96-43-96-96s43-96 96-96h82.5l45.3-128H256c-53 0-96-43-96-96V96c0-53 43-96 96-96H384c53 0 96 43 96 96V96zM384 352H256c-26.5 0-48 21.5-48 48s21.5 48 48 48H384c26.5 0 48-21.5 48-48s-21.5-48-48-48z"/></svg></span><span class="text-sm font-medium leading-5 truncate">Chatbot Flows</span></div></div>';
+      chatbotItem.onclick = function(e) { e.preventDefault(); window.cwCustomToggleChatbot(); };
+      chatbotLi.appendChild(chatbotItem);
+      mainNav.insertBefore(chatbotLi, refLi);
+      console.log('[CW Menu] Menu Chatbot Flows adicionado');
+    } else {
+      console.log('[CW Menu] Menu Chatbot Flows NÃO adicionado (feature:', features.chatbotFlowsEnabled, ', permissão:', permissions.chatbotFlowsAccess, ')');
+    }
+
+    // Menu Config Extra (apenas para SuperAdmin)
+    var isSuperAdmin = await checkIfSuperAdmin();
+    if (isSuperAdmin) {
+      console.log('[CW Menu] Usuário é SuperAdmin, adicionando menu Config Extra');
+      var permissionsLi = document.createElement('li');
+      permissionsLi.className = refLi.className;
+      var permissionsItem = document.createElement('div');
+      permissionsItem.id = 'cw-custom-menu-permissions';
+      permissionsItem.className = refLink.className;
+      permissionsItem.setAttribute('role', 'button');
+      permissionsItem.style.cursor = 'pointer';
+      permissionsItem.innerHTML = '<div class="relative flex items-center gap-2"><div class="flex items-center gap-1.5 flex-grow min-w-0"><span class="menu-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span><span class="text-sm font-medium leading-5 truncate">Config Extra</span></div></div>';
+      permissionsItem.onclick = function(e) { e.preventDefault(); window.cwCustomTogglePermissions(); };
+      permissionsLi.appendChild(permissionsItem);
+
+      // Insere junto aos outros itens customizados (após Chatbot Flows, antes de Relatórios)
+      mainNav.insertBefore(permissionsLi, refLi);
+    }
+
+    menuItemsAdded = true;
+    if (observer) { observer.disconnect(); observer = null; }
+    console.log('[CW Menu] Adição de menus concluída!');
+    return true;
+  }
+
+  // ============================================================
+  // BOTÃO NA PÁGINA DE RELATÓRIOS
+  // ============================================================
+  var reportsButtonAdded = false;
+
+  function addReportsButton() {
+    console.log('[CW Reports Button] ===== Executando =====');
+    console.log('[CW Reports Button] URL atual:', location.href);
+
+    // Verifica se está EXATAMENTE na página /reports/overview (não outras páginas de relatórios)
+    if (!location.href.includes('/reports/overview')) {
+      console.log('[CW Reports Button] Não está em /reports/overview');
+      // Remove o botão se estiver em outra página
+      var existingBtn = document.getElementById('cw-projects-report-btn-container');
+      if (existingBtn) {
+        existingBtn.remove();
+        console.log('[CW Reports Button] Botão removido (página errada)');
+      }
+      reportsButtonAdded = false;
+      return;
+    }
+
+    console.log('[CW Reports Button] ✓ Está em /reports/overview');
+
+    // Evita adicionar múltiplas vezes
+    if (document.getElementById('cw-projects-report-btn-container')) {
+      console.log('[CW Reports Button] Botão já existe, pulando');
+      return;
+    }
+
+    // Procura pela div que contém o título "Visão geral" dentro da área de conteúdo principal
+    var targetElement = null;
+
+    console.log('[CW Reports Button] Procurando container correto...');
+
+    // Tenta encontrar o container com classe específica primeiro
+    var possibleContainers = document.querySelectorAll('div.flex.items-center.justify-between, div[class*="flex"][class*="justify-between"]');
+
+    console.log('[CW Reports Button] Containers encontrados:', possibleContainers.length);
+
+    for (var i = 0; i < possibleContainers.length; i++) {
+      var container = possibleContainers[i];
+      var textContent = container.textContent || '';
+
+      console.log('[CW Reports Button] Container #' + i + ':', textContent.substring(0, 100));
+
+      // Verifica se contém "Visão geral" (ou "Overview" como alternativa)
+      if (textContent.includes('Visão geral') || textContent.includes('Overview')) {
+        // Verifica se NÃO está dentro do menu lateral (sidebar)
+        var isInSidebar = false;
+        var parent = container.parentElement;
+        while (parent) {
+          if (parent.tagName === 'ASIDE' || (parent.className && typeof parent.className === 'string' && parent.className.includes('sidebar'))) {
+            isInSidebar = true;
+            console.log('[CW Reports Button] Container está no sidebar, pulando');
+            break;
+          }
+          parent = parent.parentElement;
+        }
+
+        if (!isInSidebar) {
+          targetElement = container;
+          console.log('[CW Reports Button] ✓ Container correto encontrado (não está no sidebar)');
+          break;
+        }
+      }
+    }
+
+    if (!targetElement) {
+      console.log('[CW Reports Button] ✗ Container não encontrado, tentando novamente em 2s...');
+      setTimeout(addReportsButton, 2000);
+      return;
+    }
+
+    console.log('[CW Reports Button] ✓ Target element:', targetElement.tagName, targetElement.className);
+
+    // Configura o container para usar flexbox
+    targetElement.style.display = 'flex';
+    targetElement.style.justifyContent = 'space-between';
+    targetElement.style.alignItems = 'center';
+
+    // Cria o botão
+    var button = document.createElement('button');
+    button.id = 'cw-projects-report-btn-container';
+    button.style.cssText = 'background: #1f93ff; color: white; border: none; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; border-radius: 6px; box-shadow: 0 2px 6px rgba(31, 147, 255, 0.3); transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;';
+
+    button.innerHTML = '<svg style="width: 16px; height: 16px;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg><span>Relatórios Extras</span>';
+
+    button.onmouseover = function() {
+      this.style.background = '#0d7ce6';
+      this.style.transform = 'translateY(-1px)';
+      this.style.boxShadow = '0 4px 10px rgba(31, 147, 255, 0.4)';
+    };
+
+    button.onmouseout = function() {
+      this.style.background = '#1f93ff';
+      this.style.transform = 'translateY(0)';
+      this.style.boxShadow = '0 2px 6px rgba(31, 147, 255, 0.3)';
+    };
+
+    button.onclick = function() {
+      console.log('[CW Reports Button] Botão clicado! Abrindo relatórios de projetos...');
+      window.cwCustomOpen('/projects-reports');
+    };
+
+    // Adiciona o botão ao elemento alvo
+    targetElement.appendChild(button);
+
+    reportsButtonAdded = true;
+    console.log('[CW Reports Button] ✅ Botão adicionado com sucesso!');
+  }
+
+  function monitorReportsPage() {
+    // Tenta adicionar o botão inicialmente
+    addReportsButton();
+
+    // Monitora mudanças de URL
+    var lastReportsUrl = location.href;
+    setInterval(function() {
+      if (location.href !== lastReportsUrl) {
+        lastReportsUrl = location.href;
+        setTimeout(addReportsButton, 500);
+      }
+    }, 500);
+
+    // Observador de mutações para detectar quando o conteúdo carrega
+    // IMPORTANTE: Só adiciona o botão se ainda não existe para evitar loop infinito
+    var reportsObserver = new MutationObserver(function() {
+      if (location.href.includes('/reports/overview') && !document.getElementById('cw-projects-report-btn-container')) {
+        addReportsButton();
+      }
+    });
+
+    reportsObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  // Precarrega o KanbanCW no iframe em background para manter WavoipContext ativo
+  function preloadKanbanIframe() {
+    var iframe = document.getElementById('cw-iframe');
+    if (!iframe) return;
+    // Só precarrega se ainda não carregou
+    if (iframe.src && iframe.src !== 'about:blank' && iframe.src.startsWith(KANBAN_URL)) return;
+    var auth = getAuthFromCookie();
+    if (!auth) {
+      // Tenta novamente em 2s se auth ainda não disponível
+      setTimeout(preloadKanbanIframe, 2000);
+      return;
+    }
+    console.log('[Wavoip] Precarregando KanbanCW para ativar SDK Wavoip...');
+    iframe.src = KANBAN_URL + '/';
+    iframe.addEventListener('load', function() {
+      var a = getAuthFromCookie();
+      if (a && iframe.contentWindow) {
+        var aid = getAccountId();
+        iframe.contentWindow.postMessage({ type: 'AUTH_TOKEN', payload: Object.assign({}, a, { account_id: aid }) }, '*');
+      }
+    }, { once: true });
+  }
+
+  function initMenu() {
+    injectCSS();
+    createPanel();
+    setupNavigationDetection();
+    monitorReportsPage(); // Inicia monitoramento da página de relatórios
+    var attempts = 0;
+    var maxAttempts = 30;
+    function tryAdd() {
+      if (menuItemsAdded) return;
+      if (addMenuItems()) {
+        // Após menu criado, precarrega KanbanCW em background (para Wavoip ficar ativo)
+        setTimeout(preloadKanbanIframe, 1000);
+        return;
+      }
+      attempts++;
+      if (attempts < maxAttempts) setTimeout(tryAdd, 500);
+    }
+    setTimeout(tryAdd, 1500);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMenu);
+  } else {
+    initMenu();
+  }
+})();
+
+// ============================================================
+// SCRIPT 2: WIDGET FLUTUANTE NA CONVERSA (Configurações do Kanban)
+// ============================================================
+(function() {
+  'use strict';
+
+  // ⚠️ MESMA URL DO SCRIPT 1 - Substituída automaticamente
+  const KANBAN_URL = '__KANBANCW_URL__';
+
+  var WIDGET_CONFIG = {
+    apiUrl: KANBAN_URL + '/api',
+    chatwootUrl: window.location.origin // URL do Chatwoot atual
+  };
+
+  var currentConversationId = null;
+  var widgetModalState = {
+    view: 'main', // 'main', 'funnels', 'funnelStages', 'scheduling'
+    funnels: [],
+    selectedFunnel: null,
+    currentStage: null,
+    scheduledMessages: []
+  };
+
+  // Permissão Wavoip: começa false, atualizada assincronamente
+  var cwWavoipCanUse = false;
+
+  async function checkWavoipPermission() {
+    try {
+      var authHeaders = getAuthHeaders();
+      if (!authHeaders) return;
+      var opts = {
+        headers: {
+          'access-token': authHeaders['access-token'],
+          'token-type': authHeaders['token-type'] || 'Bearer',
+          'client': authHeaders['client'],
+          'expiry': authHeaders['expiry'] || '',
+          'uid': authHeaders['uid']
+        }
+      };
+      var results = await Promise.all([
+        fetch(KANBAN_URL + '/api/permissions/account', opts),
+        fetch(KANBAN_URL + '/api/permissions/me', opts)
+      ]);
+      if (!results[0].ok || !results[1].ok) return;
+      var accData = await results[0].json();
+      var userData = await results[1].json();
+      var accEnabled = accData && accData.data && accData.data.wavoipEnabled === true;
+      var userEnabled = !(userData && userData.data && userData.data.wavoipAccess === false);
+      cwWavoipCanUse = accEnabled && userEnabled;
+      console.log('[Kanban Widget] Wavoip permitido:', cwWavoipCanUse);
+      // Remove botão se permissão foi revogada após injeção
+      if (!cwWavoipCanUse) {
+        var btn = document.getElementById('cw-wavoip-call-btn');
+        if (btn) btn.remove();
+      }
+    } catch (e) {
+      cwWavoipCanUse = false;
+    }
+  }
+
+  function getAuthHeaders() {
+    var cookies = document.cookie.split(';');
+    for (var i = 0; i < cookies.length; i++) {
+      var cookie = cookies[i].trim();
+      if (cookie.indexOf('cw_d_session_info=') === 0) {
+        try {
+          var value = cookie.substring('cw_d_session_info='.length);
+          var parsed = JSON.parse(decodeURIComponent(value));
+          if (parsed['access-token'] && parsed['client'] && parsed['uid']) {
+            return {
+              'access-token': parsed['access-token'],
+              'token-type': parsed['token-type'] || 'Bearer',
+              'client': parsed['client'],
+              'expiry': parsed['expiry'] || '',
+              'uid': parsed['uid']
+            };
+          }
+        } catch (e) {
+          console.log('[Kanban Widget] Erro ao parsear cookie:', e);
+        }
+      }
+    }
+    return null;
+  }
+
+  function getConversationIdFromUrl() {
+    var match = location.pathname.match(/\/conversations\/(\d+)/);
+    return match ? parseInt(match[1]) : null;
+  }
+
+  function getAccountIdFromUrl() {
+    var match = location.pathname.match(/\/accounts\/(\d+)/);
+    return match ? parseInt(match[1]) : (window.chatwootConfig?.accountId || 1);
+  }
+
+  function injectWidgetCSS() {
+    if (document.getElementById('cw-kanban-widget-css')) return;
+    var css = document.createElement('style');
+    css.id = 'cw-kanban-widget-css';
+    css.textContent = '#cw-kanban-header-btn{display:inline-flex;align-items:center;min-w-0;gap:2px;transition:all 100ms ease-out;border:0;border-radius:8px;outline:1px solid transparent;opacity:50;cursor:pointer;background:transparent;height:32px;width:32px;padding:0;justify-content:center;color:var(--s-600)}#cw-kanban-header-btn:hover{opacity:100;background:rgba(0,0,0,0.05)}#cw-kanban-header-btn.has-stage{opacity:100;color:#059669}#cw-kanban-header-btn svg{width:16px;height:16px}#cw-kanban-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:1000}#cw-kanban-modal-overlay.visible{display:flex}#cw-kanban-modal{background:#fff;border-radius:12px;width:90%;max-width:500px;max-height:85vh;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,.2)}#cw-kanban-modal .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb}#cw-kanban-modal .modal-header h3{margin:0;font-size:16px;font-weight:600;color:#111827}#cw-kanban-modal .close-btn{background:none;border:none;font-size:24px;color:#6b7280;cursor:pointer;padding:0;line-height:1}#cw-kanban-modal .close-btn:hover{color:#111827}#cw-kanban-modal .modal-body{padding:16px 20px;max-height:65vh;overflow-y:auto}#cw-kanban-modal .loading{display:flex;align-items:center;justify-content:center;gap:12px;padding:32px;color:#6b7280}#cw-kanban-modal .loading .spinner{width:20px;height:20px;border:2px solid #e5e7eb;border-top-color:#3b82f6;border-radius:50%;animation:cwWidgetSpin .8s linear infinite}@keyframes cwWidgetSpin{to{transform:rotate(360deg)}}#cw-kanban-modal .error-msg{padding:12px;background:#fef2f2;color:#dc2626;border-radius:8px;font-size:14px;margin-bottom:12px}#cw-kanban-modal .success-msg{padding:12px;background:#f0fdf4;color:#059669;border-radius:8px;font-size:14px;margin-bottom:12px}#cw-kanban-modal .current-stage{display:flex;align-items:center;gap:8px;padding:12px;background:#f0fdf4;border-radius:8px;margin-bottom:16px;flex-wrap:wrap}#cw-kanban-modal .current-stage .label{font-size:12px;color:#6b7280}#cw-kanban-modal .current-stage .value{font-size:14px;font-weight:500;color:#059669;flex:1}#cw-kanban-modal .remove-btn{padding:4px 12px;background:#fee2e2;color:#dc2626;border:none;border-radius:4px;font-size:12px;cursor:pointer}#cw-kanban-modal .remove-btn:hover{background:#fecaca}#cw-kanban-modal .section-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#374151;margin-bottom:12px}#cw-kanban-modal .section-desc{font-size:13px;color:#6b7280;margin-bottom:16px}#cw-kanban-modal .section-divider{border:0;border-top:1px solid #e5e7eb;margin:20px 0}#cw-kanban-modal .back-btn{background:none;border:none;color:#3b82f6;font-size:14px;cursor:pointer;padding:0;margin-bottom:12px;display:flex;align-items:center;gap:4px}#cw-kanban-modal .back-btn:hover{text-decoration:underline}#cw-kanban-modal .list{display:flex;flex-direction:column;gap:8px}#cw-kanban-modal .list-item{display:flex;align-items:center;gap:12px;padding:12px;background:#f9fafb;border-radius:8px;cursor:pointer;transition:background .15s ease;border:none;width:100%;text-align:left;font-family:inherit}#cw-kanban-modal .list-item:hover{background:#f3f4f6}#cw-kanban-modal .list-item.selected{background:#dbeafe;border:1px solid #3b82f6}#cw-kanban-modal .color-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}#cw-kanban-modal .item-name{flex:1;font-size:14px;color:#111827}#cw-kanban-modal .item-count{font-size:12px;color:#9ca3af}#cw-kanban-modal .empty-state{padding:24px;text-align:center;color:#9ca3af;font-size:14px}#cw-kanban-modal .form-group{margin-bottom:12px}#cw-kanban-modal .form-label{display:block;font-size:13px;font-weight:500;color:#374151;margin-bottom:6px}#cw-kanban-modal .form-input,#cw-kanban-modal .form-textarea{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box}#cw-kanban-modal .form-textarea{resize:vertical;min-height:80px}#cw-kanban-modal .form-input:focus,#cw-kanban-modal .form-textarea:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,0.1)}#cw-kanban-modal .btn-primary{width:100%;padding:10px 16px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:500;cursor:pointer;transition:background .15s}#cw-kanban-modal .btn-primary:hover{background:#2563eb}#cw-kanban-modal .btn-primary:disabled{background:#9ca3af;cursor:not-allowed}#cw-kanban-modal .scheduled-item{padding:12px;background:#f9fafb;border-radius:8px;margin-bottom:8px}#cw-kanban-modal .scheduled-header{display:flex;justify-content:space-between;align-items:start;margin-bottom:8px}#cw-kanban-modal .scheduled-date{font-size:12px;font-weight:500;color:#3b82f6}#cw-kanban-modal .scheduled-status{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500}#cw-kanban-modal .status-pending{background:#fef3c7;color:#92400e}#cw-kanban-modal .status-sent{background:#d1fae5;color:#065f46}#cw-kanban-modal .status-cancelled{background:#fee2e2;color:#991b1b}#cw-kanban-modal .status-failed{background:#fee2e2;color:#991b1b}#cw-kanban-modal .status-active{background:#d1fae5;color:#065f46}#cw-kanban-modal .status-inactive{background:#f3f4f6;color:#6b7280}#cw-kanban-modal .status-started{background:#dbeafe;color:#1e40af}#cw-kanban-modal .scheduled-message{font-size:13px;color:#4b5563;margin-bottom:8px;word-wrap:break-word}#cw-kanban-modal .scheduled-attachment{font-size:12px;color:#6b7280;margin-bottom:8px;padding:6px 8px;background:#fff;border-radius:4px;display:inline-block}#cw-kanban-modal .scheduled-actions{display:flex;gap:8px}#cw-kanban-modal .btn-small{padding:4px 10px;border:none;border-radius:4px;font-size:12px;cursor:pointer;font-weight:500}#cw-kanban-modal .btn-edit{background:#dbeafe;color:#1e40af}#cw-kanban-modal .btn-edit:hover{background:#bfdbfe}#cw-kanban-modal .btn-cancel{background:#fee2e2;color:#dc2626}#cw-kanban-modal .btn-cancel:hover{background:#fecaca}#cw-kanban-modal .btn-info{background:#dbeafe;color:#1e40af}#cw-kanban-modal .btn-info:hover{background:#bfdbfe}#cw-kanban-modal .btn-danger{background:#fee2e2;color:#dc2626;margin-left:4px}#cw-kanban-modal .btn-danger:hover{background:#fecaca}#cw-kanban-modal .btn-secondary{background:#f3f4f6;color:#374151}#cw-kanban-modal .btn-secondary:hover{background:#e5e7eb}#cw-kanban-modal .current-attachment{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f0fdf4;border-radius:6px;font-size:13px;color:#059669}#cw-kanban-modal .menu-option{display:flex;align-items:center;gap:12px;padding:14px 16px;background:#f9fafb;border-radius:8px;cursor:pointer;transition:all .15s;border:2px solid transparent;margin-bottom:10px}#cw-kanban-modal .menu-option:hover{background:#f3f4f6;border-color:#e5e7eb}#cw-kanban-modal .menu-option-icon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#fff;font-size:20px}#cw-kanban-modal .menu-option-content{flex:1}#cw-kanban-modal .menu-option-title{font-size:14px;font-weight:500;color:#111827;margin-bottom:2px}#cw-kanban-modal .menu-option-desc{font-size:12px;color:#6b7280}#cw-kanban-modal .sequence-item{padding:14px;background:#f9fafb;border-radius:8px;margin-bottom:10px;border:1px solid #e5e7eb}#cw-kanban-modal .sequence-item.disabled{opacity:0.6}#cw-kanban-modal .sequence-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}#cw-kanban-modal .sequence-name{font-size:14px;font-weight:500;color:#111827}#cw-kanban-modal .sequence-desc{font-size:12px;color:#6b7280;margin-bottom:10px;line-height:1.4}#cw-kanban-modal .sequence-status{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:500}#cw-kanban-modal .sequence-actions{display:flex;gap:6px;margin-top:10px}#cw-kanban-modal .report-section{background:#f9fafb;padding:14px;border-radius:8px;margin-bottom:14px}#cw-kanban-modal .report-title{font-size:16px;font-weight:600;color:#111827;margin:0 0 12px 0}#cw-kanban-modal .report-subtitle{font-size:14px;font-weight:500;color:#374151;margin:0 0 10px 0}#cw-kanban-modal .report-status{margin-bottom:10px}#cw-kanban-modal .status-badge{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:500}#cw-kanban-modal .status-badge.status-success{background:#d1fae5;color:#065f46}#cw-kanban-modal .status-badge.status-error{background:#fee2e2;color:#991b1b}#cw-kanban-modal .status-badge.status-warning{background:#fef3c7;color:#92400e}#cw-kanban-modal .status-badge.status-info{background:#dbeafe;color:#1e40af}#cw-kanban-modal .status-badge.status-default{background:#f3f4f6;color:#6b7280}#cw-kanban-modal .report-info{font-size:13px;color:#6b7280;margin:4px 0}#cw-kanban-modal .flow-diagram{display:flex;align-items:center;gap:4px;padding:12px;background:#fff;border-radius:8px;overflow-x:auto;flex-wrap:wrap}#cw-kanban-modal .flow-node{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:60px;max-width:80px}#cw-kanban-modal .flow-node-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:bold;border:2px solid;transition:all .3s ease}#cw-kanban-modal .flow-node-label{font-size:10px;text-align:center;line-height:1.2;color:#6b7280;word-wrap:break-word;max-width:80px}#cw-kanban-modal .flow-node-pending .flow-node-icon{background:#f3f4f6;border-color:#d1d5db;color:#9ca3af}#cw-kanban-modal .flow-node-completed .flow-node-icon{background:#d1fae5;border-color:#10b981;color:#065f46}#cw-kanban-modal .flow-node-current .flow-node-icon{background:#dbeafe;border-color:#3b82f6;color:#1e40af;animation:flowPulse 2s ease-in-out infinite}#cw-kanban-modal .flow-node-failed .flow-node-icon{background:#fee2e2;border-color:#ef4444;color:#991b1b}#cw-kanban-modal .flow-node-scheduled .flow-node-icon{background:#fef3c7;border-color:#f59e0b;color:#92400e}@keyframes flowPulse{0%,100%{box-shadow:0 0 0 0 rgba(59,130,246,0.4)}50%{box-shadow:0 0 0 6px rgba(59,130,246,0)}}#cw-kanban-modal .flow-connector{width:16px;height:2px;background:#d1d5db;margin:0 -4px;flex-shrink:0;align-self:center;margin-top:-12px}#cw-kanban-modal .steps-timeline{display:flex;flex-direction:column;gap:10px}#cw-kanban-modal .step-item{display:flex;gap:10px;padding:10px;background:#fff;border-radius:6px;border-left:3px solid #e5e7eb}#cw-kanban-modal .step-item.step-completed{border-left-color:#10b981}#cw-kanban-modal .step-item.step-scheduled{border-left-color:#f59e0b}#cw-kanban-modal .step-item.step-executing{border-left-color:#3b82f6}#cw-kanban-modal .step-item.step-failed{border-left-color:#ef4444}#cw-kanban-modal .step-icon{width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}#cw-kanban-modal .step-content{flex:1;min-width:0}#cw-kanban-modal .step-type{font-size:13px;font-weight:500;color:#111827;margin-bottom:4px}#cw-kanban-modal .step-info{font-size:12px;color:#6b7280;margin-bottom:2px}#cw-kanban-modal .step-status{font-size:11px;color:#9ca3af;margin-top:4px}#cw-kanban-modal .step-error{font-size:12px;color:#dc2626;margin-top:4px;padding:4px 8px;background:#fef2f2;border-radius:4px}#cw-kanban-modal .report-actions{display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid #e5e7eb}';
+    document.head.appendChild(css);
+  }
+
+  function createHeaderButton() {
+    console.log('[Kanban Widget] === createHeaderButton iniciado ===');
+
+    var existing = document.getElementById('cw-kanban-header-btn');
+    if (existing) {
+      console.log('[Kanban Widget] Botão já existe, retornando true');
+      return true;
+    }
+
+    var allButtons = document.querySelectorAll('button');
+    console.log('[Kanban Widget] Total de botões na página: ' + allButtons.length);
+
+    var actionsContainer = null;
+    var siblingBtn = null;
+
+    for (var i = 0; i < allButtons.length; i++) {
+      var btn = allButtons[i];
+      var rect = btn.getBoundingClientRect();
+
+      if (rect.width >= 28 && rect.width <= 40 && rect.height >= 28 && rect.height <= 40 && rect.width > 0) {
+        if (rect.left > window.innerWidth * 0.6) {
+          var parent = btn.parentElement;
+          if (parent) {
+            var siblings = parent.querySelectorAll(':scope > button');
+            if (siblings.length >= 2 && siblings.length <= 6) {
+              console.log('[Kanban Widget] Candidato encontrado! Botões no container: ' + siblings.length + ', posição X: ' + rect.left);
+              actionsContainer = parent;
+              siblingBtn = btn;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!actionsContainer) {
+      console.log('[Kanban Widget] Container não encontrado pelo método de botões');
+
+      var allSpans = document.querySelectorAll('span');
+      for (var j = 0; j < allSpans.length; j++) {
+        if (allSpans[j].textContent.trim() === 'Ações da conversa') {
+          console.log('[Kanban Widget] Encontrou "Ações da conversa", buscando botões acima...');
+          var section = allSpans[j].closest('div');
+          if (section && section.parentElement) {
+            var parentDiv = section.parentElement;
+            var divsAbove = parentDiv.querySelectorAll('div');
+            for (var k = 0; k < divsAbove.length; k++) {
+              var btns = divsAbove[k].querySelectorAll(':scope > button');
+              if (btns.length >= 2 && btns.length <= 6) {
+                var divRect = divsAbove[k].getBoundingClientRect();
+                var sectionRect = section.getBoundingClientRect();
+                if (divRect.bottom < sectionRect.top + 50) {
+                  actionsContainer = divsAbove[k];
+                  siblingBtn = btns[0];
+                  console.log('[Kanban Widget] Container encontrado via fallback com ' + btns.length + ' botões');
+                  break;
+                }
+              }
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    if (!actionsContainer) {
+      console.log('[Kanban Widget] FALHA: Nenhum container encontrado');
+      return false;
+    }
+
+    if (actionsContainer.querySelector('#cw-kanban-header-btn')) {
+      console.log('[Kanban Widget] Botão já existe no container');
+      return true;
+    }
+
+    var newBtn = document.createElement('button');
+    newBtn.id = 'cw-kanban-header-btn';
+    newBtn.title = 'Configurações do Kanban';
+
+    if (siblingBtn) {
+      newBtn.className = siblingBtn.className;
+      console.log('[Kanban Widget] Classes copiadas: ' + siblingBtn.className.substring(0, 50) + '...');
+    } else {
+      newBtn.className = 'inline-flex items-center justify-center min-w-0 gap-0.5 transition-all duration-100 ease-out border-0 rounded-lg outline outline-1 outline-transparent disabled:opacity-50 bg-n-slate-9/10 text-n-slate-9/10 hover:enabled:bg-n-slate-9/20 focus-visible:bg-n-slate-9/20 outline-transparent h-8 w-8 p-0 text-sm';
+    }
+
+    newBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>';
+
+    newBtn.onclick = function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.openKanbanWidgetModal();
+    };
+
+    actionsContainer.appendChild(newBtn);
+    console.log('[Kanban Widget] SUCESSO! Botão adicionado ao container');
+
+    // Botão de chamada Wavoip — só injeta se empresa habilitou E usuário tem permissão
+    if (cwWavoipCanUse && !actionsContainer.querySelector('#cw-wavoip-call-btn')) {
+      var callBtn = document.createElement('button');
+      callBtn.id = 'cw-wavoip-call-btn';
+      callBtn.title = 'Ligar via Wavoip (WhatsApp)';
+      callBtn.className = newBtn.className;
+      callBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>';
+      callBtn.onclick = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.wavoipCallCurrentContact();
+      };
+      actionsContainer.appendChild(callBtn);
+    }
+
+    return true;
+  }
+
+  function createWidgetModal() {
+    if (document.getElementById('cw-kanban-modal-overlay')) return;
+    var overlay = document.createElement('div');
+    overlay.id = 'cw-kanban-modal-overlay';
+    overlay.onclick = function(e) { if (e.target === overlay) window.closeKanbanWidgetModal(); };
+    overlay.innerHTML = '<div id="cw-kanban-modal"><div class="modal-header"><h3>Configurações do Kanban</h3><button class="close-btn" onclick="window.closeKanbanWidgetModal()">&times;</button></div><div class="modal-body" id="cw-kanban-modal-body"><div class="loading"><div class="spinner"></div><span>Carregando...</span></div></div></div>';
+    document.body.appendChild(overlay);
+  }
+
+  window.openKanbanWidgetModal = function() {
+    var overlay = document.getElementById('cw-kanban-modal-overlay');
+    overlay.classList.add('visible');
+    widgetModalState.view = 'main';
+    widgetModalState.selectedFunnel = null;
+    loadWidgetModalData();
+  };
+
+  window.closeKanbanWidgetModal = function() {
+    var overlay = document.getElementById('cw-kanban-modal-overlay');
+    overlay.classList.remove('visible');
+  };
+
+  window.wavoipCallCurrentContact = async function() {
+    if (window._cwWavoipCalling) { console.log('[Wavoip] Chamada já em andamento, ignorando duplo clique'); return; }
+    if (!currentConversationId) return;
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders) return;
+    window._cwWavoipCalling = true;
+    try {
+      var accountId = getAccountIdFromUrl();
+      var res = await fetch(WIDGET_CONFIG.chatwootUrl + '/api/v1/accounts/' + accountId + '/conversations/' + currentConversationId, {
+        headers: {
+          'access-token': authHeaders['access-token'],
+          'token-type': authHeaders['token-type'] || 'Bearer',
+          'client': authHeaders['client'],
+          'expiry': authHeaders['expiry'] || '',
+          'uid': authHeaders['uid']
+        }
+      });
+      if (!res.ok) { alert('Erro ao obter dados do contato.'); return; }
+      var data = await res.json();
+      var phone = data.meta?.sender?.phone_number;
+      var contactName = data.meta?.sender?.name;
+      if (!phone) { alert('Este contato não possui número de telefone cadastrado.'); return; }
+
+      var iframe = document.getElementById('cw-iframe');
+      if (!iframe) return;
+
+      // Se o iframe não está carregado com o KanbanCW, abrir o painel e aguardar
+      var isKanbanLoaded = iframe.src && iframe.src !== 'about:blank' && iframe.src.startsWith(KANBAN_URL);
+      if (!isKanbanLoaded) {
+        // Abre o painel para carregar o KanbanCW
+        window.cwCustomOpen('');
+        // Aguarda o iframe carregar
+        await new Promise(function(resolve) {
+          iframe.addEventListener('load', resolve, { once: true });
+          setTimeout(resolve, 6000); // fallback
+        });
+        // Aguarda o WavoipContext inicializar
+        await new Promise(function(r) { setTimeout(r, 2000); });
+      }
+
+      if (iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'WAVOIP_START_CALL', phone: phone, conversationId: currentConversationId, contactName: contactName }, '*');
+      }
+      // O widget flutuante será exibido quando o iframe confirmar WAVOIP_CALL_STARTED
+      // Se a chamada falhar no SDK, o widget NÃO será exibido
+    } catch (err) {
+      console.error('[Wavoip] Erro ao iniciar chamada:', err);
+      alert('Erro ao iniciar chamada. Verifique o console.');
+    } finally {
+      // Libera o lock após 3s (tempo para o SDK confirmar ou falhar)
+      setTimeout(function() { window._cwWavoipCalling = false; }, 3000);
+    }
+  };
+
+  async function loadWidgetModalData() {
+    var body = document.getElementById('cw-kanban-modal-body');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><span>Carregando...</span></div>';
+
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders) {
+      body.innerHTML = '<div class="error-msg">Token de autenticacao nao encontrado. Faca login novamente.</div>';
+      return;
+    }
+
+    try {
+      // Busca funis
+      var funnelsRes = await fetch(WIDGET_CONFIG.apiUrl + '/funnels', {
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders)
+      });
+
+      // Detecta erro 401 especificamente (sessão expirada)
+      if (funnelsRes.status === 401) {
+        body.innerHTML = '<div style="padding: 40px 20px; text-align: center;"><div style="font-size: 48px; margin-bottom: 16px;">🔒</div><h3 style="font-size: 18px; font-weight: 600; color: #1f2d3d; margin: 0 0 12px;">Sessão Expirada</h3><p style="color: #6e84a3; margin: 0 0 24px; line-height: 1.6;">Sua sessão expirou. Por favor, recarregue a página para fazer login novamente.</p><button onclick="window.location.reload()" style="padding: 12px 24px; background: #1f93ff; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">🔄 Recarregar Página</button></div>';
+        return;
+      }
+
+      if (!funnelsRes.ok) throw new Error('Erro ao carregar funis. Tente novamente.');
+
+      var funnelsData = await funnelsRes.json();
+      widgetModalState.funnels = (funnelsData.data || []).filter(function(f) { return f.isActive; });
+
+      // Busca stage atual se houver
+      if (currentConversationId) {
+        var stageRes = await fetch(WIDGET_CONFIG.apiUrl + '/kanban/conversation/' + currentConversationId + '/stage', {
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders)
+        });
+        if (stageRes.ok) {
+          var stageData = await stageRes.json();
+          widgetModalState.currentStage = stageData.data;
+        }
+
+        // Busca mensagens agendadas
+        var scheduledRes = await fetch(WIDGET_CONFIG.apiUrl + '/conversations/' + currentConversationId + '/scheduled-messages', {
+          headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders)
+        });
+        if (scheduledRes.ok) {
+          var scheduledData = await scheduledRes.json();
+          widgetModalState.scheduledMessages = scheduledData.data || [];
+        }
+      }
+
+      renderWidgetModalContent();
+    } catch (err) {
+      body.innerHTML = '<div class="error-msg" style="padding: 20px;"><p style="margin: 0 0 12px;">' + err.message + '</p><button onclick="window.loadWidgetModalData()" style="padding: 8px 16px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 13px;">Tentar Novamente</button></div>';
+    }
+  }
+
+  function formatDateTime(dateString) {
+    var date = new Date(dateString);
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  function getStatusLabel(status) {
+    var labels = {
+      'pending': 'Pendente',
+      'sent': 'Enviada',
+      'cancelled': 'Cancelada',
+      'failed': 'Falhou'
+    };
+    return labels[status] || status;
+  }
+
+  function renderWidgetModalContent() {
+    var body = document.getElementById('cw-kanban-modal-body');
+    var html = '';
+
+    // VIEW: Menu Principal
+    if (widgetModalState.view === 'main') {
+      html += '<div class="menu-option" onclick="window.showFunnelsView()"><div class="menu-option-icon">📊</div><div class="menu-option-content"><div class="menu-option-title">Associar ao Funil</div><div class="menu-option-desc">Vincular conversa a uma etapa do kanban</div></div></div>';
+      html += '<div class="menu-option" onclick="window.showSchedulingView()"><div class="menu-option-icon">⏰</div><div class="menu-option-content"><div class="menu-option-title">Agendar Mensajes</div><div class="menu-option-desc">Programar envio de mensagens</div></div></div>';
+      html += '<div class="menu-option" onclick="window.showSequencesView()"><div class="menu-option-icon">🔄</div><div class="menu-option-content"><div class="menu-option-title">Flow Sequência</div><div class="menu-option-desc">Agregar contato a uma sequência automática</div></div></div>';
+    }
+
+    // VIEW: Lista de Funis
+    else if (widgetModalState.view === 'funnels') {
+      html += '<button class="back-btn" onclick="window.showMainView()">← Voltar</button>';
+
+      if (widgetModalState.currentStage) {
+        html += '<div class="current-stage"><span class="label">Etapa atual:</span><span class="value">' + widgetModalState.currentStage.funnelName + ' → ' + widgetModalState.currentStage.stageName + '</span><button class="remove-btn" onclick="window.removeFromKanbanWidget()">Remover</button></div>';
+      }
+
+      html += '<p class="section-title">📊 Selecione um funil:</p><div class="list">';
+      if (widgetModalState.funnels.length === 0) {
+        html += '<div class="empty-state">Nenhum funil encontrado. Crie um funil no Kanban primeiro.</div>';
+      } else {
+        widgetModalState.funnels.forEach(function(funnel) {
+          html += '<button class="list-item" onclick="window.selectKanbanWidgetFunnel(' + funnel.id + ')"><div class="color-dot" style="background-color:' + funnel.color + '"></div><span class="item-name">' + funnel.name + '</span><span class="item-count">' + funnel.stages.length + ' etapas</span></button>';
+        });
+      }
+      html += '</div>';
+    }
+
+    // VIEW: Etapas do Funil Selecionado
+    else if (widgetModalState.view === 'funnelStages') {
+      html += '<button class="back-btn" onclick="window.showFunnelsView()">← Voltar</button>';
+      html += '<p class="section-title"><div class="color-dot" style="background-color:' + widgetModalState.selectedFunnel.color + '"></div>' + widgetModalState.selectedFunnel.name + '</p><div class="list">';
+      widgetModalState.selectedFunnel.stages.forEach(function(stage) {
+        var isSelected = widgetModalState.currentStage && widgetModalState.currentStage.stageId === stage.id;
+        html += '<button class="list-item' + (isSelected ? ' selected' : '') + '" onclick="window.selectKanbanWidgetStage(' + stage.id + ')"><div class="color-dot" style="background-color:' + stage.color + '"></div><span class="item-name">' + stage.name + '</span></button>';
+      });
+      html += '</div>';
+    }
+
+    // VIEW: Agendamento de Mensajes
+    else if (widgetModalState.view === 'scheduling') {
+      html += '<button class="back-btn" onclick="window.showMainView()">← Voltar</button>';
+      html += '<p class="section-title">⏰ Nova Mensagem Agendada</p>';
+      html += '<div class="form-group"><label class="form-label">Mensagem</label><textarea class="form-textarea" id="schedule-message-text" placeholder="Digite a mensagem..."></textarea></div>';
+      html += '<div class="form-group"><label class="form-label">Data e Hora</label><input type="datetime-local" class="form-input" id="schedule-message-date"></div>';
+      html += '<div class="form-group"><label class="form-label">Anexo (opcional)</label><input type="file" class="form-input" id="schedule-attachment" accept="image/*,application/pdf,.doc,.docx"></div>';
+      html += '<button class="btn-primary" onclick="window.createScheduledMessage()">Agendar Mensagem</button>';
+
+      // Lista de mensagens agendadas
+      if (widgetModalState.scheduledMessages.length > 0) {
+        html += '<hr class="section-divider">';
+        html += '<p class="section-title">📋 Mensajes Programadas</p>';
+        widgetModalState.scheduledMessages.forEach(function(msg) {
+          html += '<div class="scheduled-item">';
+          html += '<div class="scheduled-header">';
+          html += '<span class="scheduled-date">' + formatDateTime(msg.scheduledAt) + '</span>';
+          html += '<span class="scheduled-status status-' + msg.status + '">' + getStatusLabel(msg.status) + '</span>';
+          html += '</div>';
+          html += '<div class="scheduled-message">' + msg.message + '</div>';
+
+          // Mostra anexo se houver
+          if (msg.attachments) {
+            try {
+              var attachments = JSON.parse(msg.attachments);
+              if (attachments.length > 0) {
+                html += '<div class="scheduled-attachment">📎 ' + attachments[0].originalName + '</div>';
+              }
+            } catch (e) {}
+          }
+
+          if (msg.status === 'pending') {
+            html += '<div class="scheduled-actions">';
+            html += '<button class="btn-small btn-edit" onclick="window.editScheduledMessage(' + msg.id + ')">Editar</button>';
+            html += '<button class="btn-small btn-cancel" onclick="window.cancelScheduledMessage(' + msg.id + ')">Cancelar</button>';
+            html += '</div>';
+          }
+          html += '</div>';
+        });
+      }
+    }
+    // VIEW: Editar Mensagem Agendada
+    else if (widgetModalState.view === 'edit-schedule' && widgetModalState.editingMessage) {
+      var msg = widgetModalState.editingMessage;
+      html += '<button class="back-btn" onclick="window.showSchedulingView()">← Voltar</button>';
+      html += '<p class="section-title">✏️ Editar Mensagem Agendada</p>';
+      html += '<div class="form-group"><label class="form-label">Mensagem</label><textarea class="form-textarea" id="edit-message-text">' + msg.message + '</textarea></div>';
+
+      var dateValue = new Date(msg.scheduledAt).toISOString().slice(0, 16);
+      html += '<div class="form-group"><label class="form-label">Data e Hora</label><input type="datetime-local" class="form-input" id="edit-message-date" value="' + dateValue + '"></div>';
+
+      // Anexo existente
+      var hasAttachment = false;
+      if (msg.attachments) {
+        try {
+          var attachments = JSON.parse(msg.attachments);
+          if (attachments.length > 0) {
+            hasAttachment = true;
+            html += '<div class="form-group"><label class="form-label">Anexo Atual</label><div class="current-attachment">📎 ' + attachments[0].originalName + ' <button class="btn-small btn-cancel" onclick="window.removeAttachment()">Remover</button></div></div>';
+          }
+        } catch (e) {}
+      }
+
+      html += '<div class="form-group"><label class="form-label">' + (hasAttachment ? 'Substituir Anexo' : 'Agregar Anexo') + ' (opcional)</label><input type="file" class="form-input" id="edit-attachment" accept="image/*,application/pdf,.doc,.docx"></div>';
+      html += '<button class="btn-primary" onclick="window.saveEditedMessage()">Salvar Alterações</button>';
+    }
+
+    // VIEW: Sequências de Flows
+    else if (widgetModalState.view === 'sequences') {
+      html += '<button class="back-btn" onclick="window.showMainView()">← Voltar</button>';
+      html += '<p class="section-title">🔄 Flow Sequência</p>';
+      html += '<p class="section-desc">Selecione uma sequência para adicionar este contato</p>';
+
+      if (!widgetModalState.sequences) {
+        html += '<div class="loading"><div class="spinner"></div><span>Carregando sequências...</span></div>';
+      } else if (widgetModalState.sequences.length === 0) {
+        html += '<div class="empty-state">Nenhuma sequência disponível. Crie uma sequência do tipo "Sequence" no Chatbot Flows.</div>';
+      } else {
+        html += '<div class="list">';
+        widgetModalState.sequences.forEach(function(flow) {
+          var execution = widgetModalState.activeExecutions[flow.id];
+          var hasActiveExecution = execution && ['pending', 'running', 'waiting', 'paused'].includes(execution.status);
+
+          var statusClass = flow.isActive ? 'active' : 'inactive';
+          var statusText = flow.isActive ? 'Ativo' : 'Inativo';
+
+          if (hasActiveExecution) {
+            statusClass = 'started';
+            statusText = 'Iniciado';
+          }
+
+          html += '<div class="sequence-item ' + (flow.isActive ? '' : 'disabled') + '">';
+          html += '<div class="sequence-header">';
+          html += '<span class="sequence-name">' + flow.name + '</span>';
+          html += '<span class="sequence-status status-' + statusClass + '">' + statusText + '</span>';
+          html += '</div>';
+          if (flow.description) {
+            html += '<div class="sequence-desc">' + flow.description + '</div>';
+          }
+
+          if (hasActiveExecution) {
+            html += '<div class="sequence-actions">';
+            html += '<button class="btn-small btn-info" onclick="window.viewSequenceReport(' + execution.id + ', ' + flow.id + ')">📊 Ver Relatório</button>';
+            html += '<button class="btn-small btn-danger" onclick="window.cancelSequence(' + execution.id + ')">❌ Cancelar</button>';
+            html += '</div>';
+          } else if (flow.isActive) {
+            html += '<button class="btn-small btn-primary" onclick="window.addToSequence(' + flow.id + ')">Agregar a la Secuencia</button>';
+          } else {
+            html += '<button class="btn-small" disabled>Flow Inativo</button>';
+          }
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+    }
+
+    // VIEW: Relatório de Sequência
+    else if (widgetModalState.view === 'sequenceReport') {
+      html += '<button class="back-btn" onclick="window.showSequencesView()">← Voltar</button>';
+      html += '<p class="section-title">📊 Relatório da Sequência</p>';
+
+      if (!widgetModalState.currentExecution) {
+        html += '<div class="loading"><div class="spinner"></div><span>Carregando relatório...</span></div>';
+      } else {
+        var exec = widgetModalState.currentExecution;
+        var flow = widgetModalState.currentFlow;
+
+        // Informações gerais
+        html += '<div class="report-section">';
+        html += '<h3 class="report-title">' + (flow ? flow.name : 'Sequência') + '</h3>';
+
+        var statusMap = {
+          'pending': { label: 'Pendente', class: 'warning', icon: '⏳' },
+          'running': { label: 'Executando', class: 'info', icon: '▶️' },
+          'waiting': { label: 'Aguardando', class: 'warning', icon: '⏸️' },
+          'paused': { label: 'Pausado', class: 'warning', icon: '⏸️' },
+          'completed': { label: 'Concluído', class: 'success', icon: '✅' },
+          'failed': { label: 'Falhou', class: 'error', icon: '❌' },
+          'canceled': { label: 'Cancelado', class: 'error', icon: '🚫' }
+        };
+
+        var statusInfo = statusMap[exec.status] || { label: exec.status, class: 'default', icon: '❓' };
+
+        html += '<div class="report-status">';
+        html += '<span class="status-badge status-' + statusInfo.class + '">' + statusInfo.icon + ' ' + statusInfo.label + '</span>';
+        html += '</div>';
+
+        if (exec.startedAt) {
+          var startDate = new Date(exec.startedAt);
+          html += '<p class="report-info">Iniciado em: ' + startDate.toLocaleString('pt-BR') + '</p>';
+        }
+
+        if (exec.completedAt) {
+          var endDate = new Date(exec.completedAt);
+          html += '<p class="report-info">Concluído em: ' + endDate.toLocaleString('pt-BR') + '</p>';
+        }
+
+        if (exec.errorMessage) {
+          html += '<div class="error-msg">Erro: ' + exec.errorMessage + '</div>';
+        }
+
+        html += '</div>';
+
+        // Visualização gráfica do fluxo
+        if (flow && flow.flowData) {
+          try {
+            var flowData = typeof flow.flowData === 'string' ? JSON.parse(flow.flowData) : flow.flowData;
+            var nodes = flowData.nodes || [];
+            var edges = flowData.edges || [];
+
+            if (nodes.length > 0) {
+              html += '<div class="report-section">';
+              html += '<h4 class="report-subtitle">Visualização do Fluxo</h4>';
+              html += '<div class="flow-diagram">';
+
+              // Criar um mapa de nodes executados
+              var executedNodes = {};
+              var currentNodeId = exec.currentNodeId;
+              if (exec.steps && exec.steps.length > 0) {
+                exec.steps.forEach(function(step) {
+                  executedNodes[step.nodeId] = step.status;
+                });
+              }
+
+              // Função para gerar preview do node
+              function getNodePreview(node) {
+                var type = node.type;
+                var data = node.data || {};
+
+                switch(type) {
+                  case 'start':
+                    return '▶️ Início';
+
+                  case 'sendText':
+                    var msg = data.message || '';
+                    if (msg.length > 30) msg = msg.substring(0, 30) + '...';
+                    return '💬 ' + (msg || 'Texto');
+
+                  case 'sendImage':
+                    return '🖼️ Imagem';
+
+                  case 'sendVideo':
+                    return '🎥 Vídeo';
+
+                  case 'sendFile':
+                    return '📎 Arquivo';
+
+                  case 'delay':
+                  case 'sequenceDelay':
+                    var seconds = data.seconds || data.value || 0;
+                    var unit = data.unit || 'seconds';
+                    var timeStr = seconds + ' ';
+                    if (unit === 'minutes') timeStr += 'min';
+                    else if (unit === 'hours') timeStr += 'h';
+                    else if (unit === 'days') timeStr += 'd';
+                    else if (unit === 'weeks') timeStr += 'sem';
+                    else timeStr += 's';
+                    return '⏱️ ' + timeStr;
+
+                  case 'condition':
+                    return '🔀 Condição';
+
+                  case 'switch':
+                    return '🔀 Escolha';
+
+                  case 'assign':
+                    return '👤 Atribuir';
+
+                  case 'changeStatus':
+                    var status = data.status || '';
+                    var statusEmoji = status === 'resolved' ? '✅' : status === 'pending' ? '⏳' : '📂';
+                    return statusEmoji + ' Status';
+
+                  case 'labels':
+                    var action = data.action === 'add' ? '➕' : '➖';
+                    return action + ' Labels';
+
+                  case 'aiAgent':
+                    return '🤖 IA';
+
+                  case 'httpRequest':
+                    return '🌐 API';
+
+                  case 'waitForResponse':
+                  case 'input':
+                    return '⌨️ Aguardar';
+
+                  case 'end':
+                  case 'sequenceEnd':
+                    return '🏁 Fim';
+
+                  default:
+                    return data.label || type;
+                }
+              }
+
+              // Renderizar nodes em sequência
+              nodes.forEach(function(node, index) {
+                var nodeStatus = executedNodes[node.id];
+                var isCurrent = node.id === currentNodeId;
+
+                var nodeClass = 'flow-node';
+                var nodeIcon = '○';
+
+                if (nodeStatus === 'completed') {
+                  nodeClass += ' flow-node-completed';
+                  nodeIcon = '✓';
+                } else if (nodeStatus === 'failed') {
+                  nodeClass += ' flow-node-failed';
+                  nodeIcon = '✗';
+                } else if (nodeStatus === 'executing' || isCurrent) {
+                  nodeClass += ' flow-node-current';
+                  nodeIcon = '▶';
+                } else if (nodeStatus === 'scheduled') {
+                  nodeClass += ' flow-node-scheduled';
+                  nodeIcon = '⏳';
+                } else {
+                  nodeClass += ' flow-node-pending';
+                  nodeIcon = '○';
+                }
+
+                html += '<div class="' + nodeClass + '">';
+                html += '<div class="flow-node-icon">' + nodeIcon + '</div>';
+                html += '<div class="flow-node-label">' + getNodePreview(node) + '</div>';
+                html += '</div>';
+
+                // Agregar connector se não for o último
+                if (index < nodes.length - 1) {
+                  html += '<div class="flow-connector"></div>';
+                }
+              });
+
+              html += '</div>';
+              html += '</div>';
+            }
+          } catch (e) {
+            console.error('Erro ao renderizar diagrama do fluxo:', e);
+          }
+        }
+
+        // Steps executados (lista detalhada)
+        if (exec.steps && exec.steps.length > 0) {
+          html += '<div class="report-section">';
+          html += '<h4 class="report-subtitle">Histórico Detalhado</h4>';
+          html += '<div class="steps-timeline">';
+
+          exec.steps.forEach(function(step) {
+            var stepStatusMap = {
+              'scheduled': { label: 'Agendado', class: 'warning', icon: '📅' },
+              'executing': { label: 'Executando', class: 'info', icon: '▶️' },
+              'completed': { label: 'Concluído', class: 'success', icon: '✅' },
+              'failed': { label: 'Falhou', class: 'error', icon: '❌' },
+              'skipped': { label: 'Ignorado', class: 'default', icon: '⏭️' }
+            };
+
+            var stepStatus = stepStatusMap[step.status] || { label: step.status, class: 'default', icon: '❓' };
+
+            html += '<div class="step-item step-' + step.status + '">';
+            html += '<div class="step-icon">' + stepStatus.icon + '</div>';
+            html += '<div class="step-content">';
+            html += '<div class="step-type">' + step.nodeType + '</div>';
+
+            if (step.scheduledFor && step.status === 'scheduled') {
+              var schedDate = new Date(step.scheduledFor);
+              html += '<div class="step-info">Agendado para: ' + schedDate.toLocaleString('pt-BR') + '</div>';
+            }
+
+            if (step.executedAt) {
+              var execDate = new Date(step.executedAt);
+              html += '<div class="step-info">Executado em: ' + execDate.toLocaleString('pt-BR') + '</div>';
+            }
+
+            if (step.error) {
+              html += '<div class="step-error">Erro: ' + step.error + '</div>';
+            }
+
+            html += '<div class="step-status">' + stepStatus.label + '</div>';
+            html += '</div>';
+            html += '</div>';
+          });
+
+          html += '</div>';
+          html += '</div>';
+        } else {
+          html += '<div class="empty-state">Nenhum step executado ainda</div>';
+        }
+
+        // Ações
+        if (['pending', 'running', 'waiting', 'paused'].includes(exec.status)) {
+          html += '<div class="report-actions">';
+          if (exec.status === 'paused') {
+            html += '<button class="btn-primary" onclick="window.resumeSequence(' + exec.id + ')">▶️ Retomar</button>';
+          } else if (exec.status === 'waiting' || exec.status === 'running') {
+            html += '<button class="btn-secondary" onclick="window.pauseSequence(' + exec.id + ')">⏸️ Pausar</button>';
+          }
+          html += '<button class="btn-danger" onclick="window.cancelSequence(' + exec.id + ')">❌ Cancelar</button>';
+          html += '</div>';
+        }
+      }
+    }
+
+    body.innerHTML = html;
+  }
+
+  // Navegação entre views
+  window.showMainView = function() {
+    widgetModalState.view = 'main';
+    renderWidgetModalContent();
+  };
+
+  window.showFunnelsView = function() {
+    widgetModalState.view = 'funnels';
+    renderWidgetModalContent();
+  };
+
+  window.showSchedulingView = function() {
+    widgetModalState.view = 'scheduling';
+    renderWidgetModalContent();
+  };
+
+  window.showSequencesView = async function() {
+    widgetModalState.view = 'sequences';
+    widgetModalState.sequences = [];
+    widgetModalState.activeExecutions = {};
+    renderWidgetModalContent();
+
+    // Carregar flows de sequência
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders) return;
+
+    try {
+      // Buscar contactId da conversa atual
+      var accountId = getAccountIdFromUrl();
+      var conversationRes = await fetch(WIDGET_CONFIG.chatwootUrl + '/api/v1/accounts/' + accountId + '/conversations/' + currentConversationId, {
+        headers: authHeaders
+      });
+
+      if (!conversationRes.ok) throw new Error('Erro ao buscar conversa');
+
+      var conversationData = await conversationRes.json();
+      var contactId = conversationData.meta?.sender?.id;
+
+      // Carregar flows de sequência
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/chatbot-flows', {
+        headers: authHeaders
+      });
+
+      if (!res.ok) throw new Error('Erro ao carregar flows');
+
+      var data = await res.json();
+      // Filtrar apenas flows do tipo 'sequence'
+      widgetModalState.sequences = data.data.filter(function(f) { return f.type === 'sequence'; });
+
+      // Carregar execuções ativas do contato
+      if (contactId) {
+        var execRes = await fetch(WIDGET_CONFIG.apiUrl + '/sequences/contacts/' + contactId + '/sequences', {
+          headers: authHeaders
+        });
+
+        if (execRes.ok) {
+          var execData = await execRes.json();
+          // Mapear execuções por flowId
+          execData.data.forEach(function(exec) {
+            widgetModalState.activeExecutions[exec.flowId] = exec;
+          });
+        }
+      }
+
+      renderWidgetModalContent();
+    } catch (err) {
+      console.error('Erro ao carregar sequências:', err);
+    }
+  };
+
+  window.addToSequence = async function(flowId) {
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders || !currentConversationId) return;
+
+    // Buscar informações da conversa diretamente do Chatwoot para pegar o contactId
+    var accountId = getAccountIdFromUrl();
+    var conversationRes = await fetch(WIDGET_CONFIG.chatwootUrl + '/api/v1/accounts/' + accountId + '/conversations/' + currentConversationId, {
+      headers: authHeaders
+    });
+
+    if (!conversationRes.ok) {
+      alert('Erro ao buscar dados da conversa');
+      return;
+    }
+
+    var conversationData = await conversationRes.json();
+    var contactId = conversationData.meta?.sender?.id;
+
+    if (!contactId) {
+      alert('Contacto não encontrado');
+      return;
+    }
+
+    var body = document.getElementById('cw-kanban-modal-body');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><span>Adicionando à sequência...</span></div>';
+
+    try {
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/chatbot-flows/' + flowId + '/add-contact', {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
+        body: JSON.stringify({
+          contactId: contactId,
+          conversationId: currentConversationId
+        })
+      });
+
+      if (!res.ok) {
+        var error = await res.json().catch(function() { return { error: 'Erro desconhecido' }; });
+        throw new Error(error.error || 'Erro ao adicionar à sequência');
+      }
+
+      body.innerHTML = '<div class="success-msg">✓ Contacto adicionado à sequência com sucesso!</div>';
+      setTimeout(function() {
+        widgetModalState.view = 'main';
+        renderWidgetModalContent();
+      }, 1500);
+    } catch (err) {
+      body.innerHTML = '<div class="error-msg">' + err.message + '</div>';
+      setTimeout(function() {
+        widgetModalState.view = 'sequences';
+        window.showSequencesView();
+      }, 2000);
+    }
+  };
+
+  // Função para visualizar relatório da sequência
+  window.viewSequenceReport = async function(executionId, flowId) {
+    widgetModalState.view = 'sequenceReport';
+    widgetModalState.currentExecution = null;
+    widgetModalState.currentFlow = null;
+    renderWidgetModalContent();
+
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders) return;
+
+    try {
+      // Buscar detalhes da execução
+      var execRes = await fetch(WIDGET_CONFIG.apiUrl + '/sequences/executions/' + executionId, {
+        headers: authHeaders
+      });
+
+      if (!execRes.ok) throw new Error('Erro ao carregar relatório');
+
+      var execData = await execRes.json();
+      widgetModalState.currentExecution = execData.data;
+
+      // Buscar detalhes do flow
+      var flowRes = await fetch(WIDGET_CONFIG.apiUrl + '/chatbot-flows/' + flowId, {
+        headers: authHeaders
+      });
+
+      if (flowRes.ok) {
+        var flowData = await flowRes.json();
+        widgetModalState.currentFlow = flowData.data;
+      }
+
+      renderWidgetModalContent();
+    } catch (err) {
+      console.error('Erro ao carregar relatório:', err);
+      alert('Erro ao carregar relatório: ' + err.message);
+      window.showSequencesView();
+    }
+  };
+
+  // Função para pausar sequência
+  window.pauseSequence = async function(executionId) {
+    if (!confirm('Deseja pausar esta sequência?')) return;
+
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders) return;
+
+    try {
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/sequences/executions/' + executionId + '/pause', {
+        method: 'POST',
+        headers: authHeaders
+      });
+
+      if (!res.ok) throw new Error('Erro ao pausar sequência');
+
+      alert('✓ Sequência pausada com sucesso!');
+      window.viewSequenceReport(executionId, widgetModalState.currentFlow.id);
+    } catch (err) {
+      alert('Erro ao pausar sequência: ' + err.message);
+    }
+  };
+
+  // Função para retomar sequência
+  window.resumeSequence = async function(executionId) {
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders) return;
+
+    try {
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/sequences/executions/' + executionId + '/resume', {
+        method: 'POST',
+        headers: authHeaders
+      });
+
+      if (!res.ok) throw new Error('Erro ao retomar sequência');
+
+      alert('✓ Sequência retomada com sucesso!');
+      window.viewSequenceReport(executionId, widgetModalState.currentFlow.id);
+    } catch (err) {
+      alert('Erro ao retomar sequência: ' + err.message);
+    }
+  };
+
+  // Função para cancelar sequência
+  window.cancelSequence = async function(executionId) {
+    if (!confirm('Deseja realmente cancelar esta sequência? Esta ação não pode ser desfeita.')) return;
+
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders) return;
+
+    try {
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/sequences/executions/' + executionId + '/cancel', {
+        method: 'POST',
+        headers: authHeaders
+      });
+
+      if (!res.ok) throw new Error('Erro ao cancelar sequência');
+
+      alert('✓ Sequência cancelada com sucesso!');
+      window.showSequencesView();
+    } catch (err) {
+      alert('Erro ao cancelar sequência: ' + err.message);
+    }
+  };
+
+  // Funções de Funis
+  window.selectKanbanWidgetFunnel = function(funnelId) {
+    widgetModalState.selectedFunnel = widgetModalState.funnels.find(function(f) { return f.id === funnelId; });
+    widgetModalState.view = 'funnelStages';
+    renderWidgetModalContent();
+  };
+
+  window.selectKanbanWidgetStage = async function(stageId) {
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders || !currentConversationId) return;
+
+    var body = document.getElementById('cw-kanban-modal-body');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><span>Salvando...</span></div>';
+
+    try {
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/kanban/' + currentConversationId + '/move-to-stage', {
+        method: 'PATCH',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders),
+        body: JSON.stringify({ stageId: stageId })
+      });
+
+      if (!res.ok) throw new Error('Erro ao salvar');
+
+      var stage = widgetModalState.selectedFunnel.stages.find(function(s) { return s.id === stageId; });
+      widgetModalState.currentStage = {
+        stageId: stageId,
+        stageName: stage.name,
+        stageColor: stage.color,
+        funnelId: widgetModalState.selectedFunnel.id,
+        funnelName: widgetModalState.selectedFunnel.name
+      };
+
+      updateHeaderButton();
+      body.innerHTML = '<div class="success-msg">✓ Conversa associada com sucesso!</div>';
+      setTimeout(function() {
+        widgetModalState.view = 'main';
+        renderWidgetModalContent();
+      }, 1500);
+    } catch (err) {
+      body.innerHTML = '<div class="error-msg">' + err.message + '</div>';
+    }
+  };
+
+  window.removeFromKanbanWidget = async function() {
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders || !currentConversationId) return;
+
+    var body = document.getElementById('cw-kanban-modal-body');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><span>Removendo...</span></div>';
+
+    try {
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/kanban/' + currentConversationId + '/remove', {
+        method: 'DELETE',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders)
+      });
+
+      if (!res.ok) throw new Error('Erro ao remover');
+
+      widgetModalState.currentStage = null;
+      updateHeaderButton();
+      body.innerHTML = '<div class="success-msg">✓ Conversa removida do kanban!</div>';
+      setTimeout(function() {
+        widgetModalState.view = 'main';
+        renderWidgetModalContent();
+      }, 1500);
+    } catch (err) {
+      body.innerHTML = '<div class="error-msg">' + err.message + '</div>';
+    }
+  };
+
+  // Funções de Agendamento
+  window.createScheduledMessage = async function() {
+    var messageEl = document.getElementById('schedule-message-text');
+    var dateEl = document.getElementById('schedule-message-date');
+    var attachmentEl = document.getElementById('schedule-attachment');
+
+    if (!messageEl || !dateEl) return;
+
+    var message = messageEl.value.trim();
+    var scheduledAt = dateEl.value;
+    var hasAttachment = attachmentEl && attachmentEl.files && attachmentEl.files[0];
+
+    if (!message && !hasAttachment) {
+      alert('Por favor, digite uma mensagem ou anexe um arquivo');
+      return;
+    }
+
+    if (!scheduledAt) {
+      alert('Por favor, selecione data e hora');
+      return;
+    }
+
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders || !currentConversationId) return;
+
+    var body = document.getElementById('cw-kanban-modal-body');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><span>Agendando...</span></div>';
+
+    try {
+      // Usa FormData para enviar arquivo
+      var formData = new FormData();
+      formData.append('message', message);
+      formData.append('scheduledAt', new Date(scheduledAt).toISOString());
+
+      if (attachmentEl && attachmentEl.files && attachmentEl.files[0]) {
+        formData.append('attachment', attachmentEl.files[0]);
+      }
+
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/conversations/' + currentConversationId + '/scheduled-messages', {
+        method: 'POST',
+        headers: authHeaders, // Não inclui Content-Type para FormData
+        body: formData
+      });
+
+      if (!res.ok) {
+        var errorData = await res.json();
+        throw new Error(errorData.error || 'Erro ao agendar mensagem');
+      }
+
+      var result = await res.json();
+      widgetModalState.scheduledMessages.push(result.data);
+
+      body.innerHTML = '<div class="success-msg">✓ Mensagem agendada com sucesso!</div>';
+      setTimeout(function() {
+        renderWidgetModalContent();
+      }, 1500);
+    } catch (err) {
+      body.innerHTML = '<div class="error-msg">' + err.message + '</div><button class="btn-primary" style="margin-top:12px" onclick="window.showSchedulingView()">Voltar</button>';
+    }
+  };
+
+  window.cancelScheduledMessage = async function(msgId) {
+    if (!confirm('Deseja realmente cancelar esta mensagem agendada?')) return;
+
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders || !currentConversationId) return;
+
+    var body = document.getElementById('cw-kanban-modal-body');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><span>Cancelando...</span></div>';
+
+    try {
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/conversations/' + currentConversationId + '/scheduled-messages/' + msgId, {
+        method: 'DELETE',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders)
+      });
+
+      if (!res.ok) throw new Error('Erro ao cancelar mensagem');
+
+      widgetModalState.scheduledMessages = widgetModalState.scheduledMessages.filter(function(m) { return m.id !== msgId; });
+
+      body.innerHTML = '<div class="success-msg">✓ Mensagem cancelada!</div>';
+      setTimeout(function() {
+        renderWidgetModalContent();
+      }, 1500);
+    } catch (err) {
+      body.innerHTML = '<div class="error-msg">' + err.message + '</div><button class="btn-primary" style="margin-top:12px" onclick="window.showSchedulingView()">Voltar</button>';
+    }
+  };
+
+  window.editScheduledMessage = function(msgId) {
+    var msg = widgetModalState.scheduledMessages.find(function(m) { return m.id === msgId; });
+    if (!msg) return;
+
+    widgetModalState.editingMessage = msg;
+    widgetModalState.removeAttachmentFlag = false;
+    widgetModalState.view = 'edit-schedule';
+    renderWidgetModalContent();
+  };
+
+  window.saveEditedMessage = async function() {
+    var messageEl = document.getElementById('edit-message-text');
+    var dateEl = document.getElementById('edit-message-date');
+    var attachmentEl = document.getElementById('edit-attachment');
+
+    if (!messageEl || !dateEl || !widgetModalState.editingMessage) return;
+
+    var message = messageEl.value.trim();
+    var scheduledAt = dateEl.value;
+    var hasAttachment = (attachmentEl && attachmentEl.files && attachmentEl.files[0]) ||
+                       (widgetModalState.editingMessage.attachments && !widgetModalState.removeAttachmentFlag);
+
+    if (!message && !hasAttachment) {
+      alert('Por favor, digite uma mensagem ou anexe um arquivo');
+      return;
+    }
+
+    if (!scheduledAt) {
+      alert('Por favor, selecione data e hora');
+      return;
+    }
+
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders || !currentConversationId) return;
+
+    var body = document.getElementById('cw-kanban-modal-body');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div><span>Salvando...</span></div>';
+
+    try {
+      var formData = new FormData();
+      formData.append('message', message);
+      formData.append('scheduledAt', new Date(scheduledAt).toISOString());
+
+      if (attachmentEl && attachmentEl.files && attachmentEl.files[0]) {
+        formData.append('attachment', attachmentEl.files[0]);
+      }
+
+      if (widgetModalState.removeAttachmentFlag) {
+        formData.append('removeAttachment', 'true');
+      }
+
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/conversations/' + currentConversationId + '/scheduled-messages/' + widgetModalState.editingMessage.id, {
+        method: 'PATCH',
+        headers: authHeaders,
+        body: formData
+      });
+
+      if (!res.ok) {
+        var errorData = await res.json();
+        throw new Error(errorData.error || 'Erro ao atualizar mensagem');
+      }
+
+      var result = await res.json();
+
+      // Atualiza na lista
+      var index = widgetModalState.scheduledMessages.findIndex(function(m) { return m.id === result.data.id; });
+      if (index !== -1) {
+        widgetModalState.scheduledMessages[index] = result.data;
+      }
+
+      widgetModalState.editingMessage = null;
+      body.innerHTML = '<div class="success-msg">✓ Mensagem atualizada com sucesso!</div>';
+      setTimeout(function() {
+        widgetModalState.view = 'scheduling';
+        renderWidgetModalContent();
+      }, 1500);
+    } catch (err) {
+      body.innerHTML = '<div class="error-msg">' + err.message + '</div><button class="btn-primary" style="margin-top:12px" onclick="window.editScheduledMessage(' + widgetModalState.editingMessage.id + ')">Voltar</button>';
+    }
+  };
+
+  window.removeAttachment = function() {
+    if (!confirm('Deseja realmente remover o anexo?')) return;
+    widgetModalState.removeAttachmentFlag = true;
+    widgetModalState.editingMessage.attachments = null;
+    renderWidgetModalContent();
+  };
+
+  function updateHeaderButton() {
+    var btn = document.getElementById('cw-kanban-header-btn');
+    if (!btn) return;
+
+    if (widgetModalState.currentStage) {
+      btn.classList.add('has-stage');
+      btn.title = 'Kanban: ' + widgetModalState.currentStage.stageName;
+    } else {
+      btn.classList.remove('has-stage');
+      btn.title = 'Configurações do Kanban';
+    }
+  }
+
+  async function checkCurrentStageWidget() {
+    var authHeaders = getAuthHeaders();
+    if (!authHeaders || !currentConversationId) return;
+
+    try {
+      var res = await fetch(WIDGET_CONFIG.apiUrl + '/kanban/conversation/' + currentConversationId + '/stage', {
+        headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders)
+      });
+
+      if (res.ok) {
+        var data = await res.json();
+        widgetModalState.currentStage = data.data;
+        updateHeaderButton();
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }
+
+  function checkConversationPageWidget() {
+    var convId = getConversationIdFromUrl();
+
+    if (convId) {
+      currentConversationId = convId;
+      var attempts = 0;
+      var maxAttempts = 30;
+
+      function tryAddButton() {
+        console.log('[Kanban Widget] Tentativa ' + (attempts + 1) + ' de ' + maxAttempts);
+        if (createHeaderButton()) {
+          console.log('[Kanban Widget] Botão criado com sucesso!');
+          checkCurrentStageWidget();
+        } else {
+          attempts++;
+          if (attempts < maxAttempts) {
+            setTimeout(tryAddButton, 500);
+          } else {
+            console.log('[Kanban Widget] Falhou após ' + maxAttempts + ' tentativas');
+          }
+        }
+      }
+
+      setTimeout(tryAddButton, 500);
+    } else {
+      currentConversationId = null;
+      widgetModalState.currentStage = null;
+      var btn = document.getElementById('cw-kanban-header-btn');
+      if (btn) btn.remove();
+      var callBtn = document.getElementById('cw-wavoip-call-btn');
+      if (callBtn) callBtn.remove();
+    }
+  }
+
+  function setupWidgetNavigationDetection() {
+    var widgetLastUrl = location.href;
+
+    function onWidgetUrlChange() {
+      if (location.href !== widgetLastUrl) {
+        widgetLastUrl = location.href;
+        checkConversationPageWidget();
+      }
+    }
+
+    window.addEventListener('popstate', onWidgetUrlChange);
+
+    setInterval(function() {
+      if (location.href !== widgetLastUrl) {
+        onWidgetUrlChange();
+      }
+    }, 500);
+  }
+
+
+
+  function initWidget() {
+    injectWidgetCSS();
+    createWidgetModal();
+    setupWidgetNavigationDetection();
+    checkWavoipPermission(); // async — preenche cwWavoipCanUse antes do usuário navegar para uma conversa
+    checkConversationPageWidget();
+    console.log('[Kanban Widget] Inicializado');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initWidget);
+  } else {
+    setTimeout(initWidget, 100);
+  }
+})();
+</script>
+
+<script>
+// ============================================================
+// SCRIPT 3: FIX Z-INDEX DO MENU LATERAL (PERFIL SOBREPÕE ITENS)
+// ============================================================
+(function () {
+  if (document.getElementById('cw-custom-zindex-style')) return;
+
+  var style = document.createElement('style');
+  style.id = 'cw-custom-zindex-style';
+
+  style.innerHTML = `
+    aside[class*="translate-x-"]:where([dir=ltr],[dir=ltr] *) {
+      position: relative !important;
+      z-index: 1000 !important;
+    }
+  `;
+
+  document.head.appendChild(style);
+})();
+</script>

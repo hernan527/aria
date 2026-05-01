@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    @apply bg-surface text-white font-sans antialiased;
+    margin: 0;
+  }
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-200 rounded-full;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-50 rounded-2xl border border-white/5 p-6;
+  }
+  .card-sm {
+    @apply bg-surface-50 rounded-xl border border-white/5 p-4;
+  }
+  .btn-primary {
+    @apply bg-aria-500 hover:bg-aria-600 text-white font-medium px-4 py-2 rounded-xl transition-colors text-sm;
+  }
+  .btn-ghost {
+    @apply hover:bg-white/5 text-white/60 hover:text-white font-medium px-4 py-2 rounded-xl transition-colors text-sm;
+  }
+  .metric-label {
+    @apply text-xs font-medium text-white/40 uppercase tracking-widest;
+  }
+  .metric-value {
+    @apply text-3xl font-bold text-white;
+  }
+  .metric-delta-up {
+    @apply text-xs text-emerald-400 font-medium;
+  }
+  .metric-delta-down {
+    @apply text-xs text-red-400 font-medium;
+  }
+}

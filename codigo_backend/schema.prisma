@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id                Int       @id @default(autoincrement())
+  nombre           String    @db.VarChar(100)
+  email            String?   @db.VarChar(150)
+  telefono         String?   @db.VarChar(20)
+  edad            Int?
+  ciudad          String?   @db.VarChar(50)
+  tipo_consulta   String    @db.VarChar(100)
+  urgencia        String    @db.VarChar(20)  // "alta", "media", "baja"
+  mensaje         String?   @db.Text
+  estado          String    @default("nuevo")  // "nuevo", "contactado", "en_proceso", "convertido", "descartado"
+  fecha_creacion  DateTime  @default(now())
+  fecha_actualizacion DateTime @updatedAt
+  
+  // Campos IA
+  ai_score        Int?      // Score 0-100 de potencial de conversión
+  ai_analysis     String?   @db.Text // Análisis detallado de la IA
+  ai_razones      Json?     // Razones para el score (JSON array)
+  ai_fecha_analisis DateTime?
+  ai_precio_sugerido Float? // Precio estimado de servicio
+  
+  @@map("leads")
+}

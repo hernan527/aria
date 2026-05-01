@@ -1,0 +1,448 @@
+{
+  "name": "Asistente Personal WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chatwoot-webhook",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1200, 0],
+      "id": "webhook-chatwoot",
+      "name": "Chatwoot Webhook",
+      "webhookId": "chatwoot-personal-001"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "only-incoming",
+              "leftValue": "={{ $json.body.message_type }}",
+              "rightValue": "incoming",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-960, 0],
+      "id": "filter-incoming",
+      "name": "Solo mensajes entrantes"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "conv-id",
+              "name": "conversation_id",
+              "value": "={{ $json.body.conversation.id }}",
+              "type": "string"
+            },
+            {
+              "id": "contact-name",
+              "name": "contact_name",
+              "value": "={{ $json.body.meta?.sender?.name || 'Desconocido' }}",
+              "type": "string"
+            },
+            {
+              "id": "contact-phone",
+              "name": "contact_phone",
+              "value": "={{ $json.body.meta?.sender?.phone_number || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "mensaje",
+              "name": "mensaje",
+              "value": "={{ $json.body.content }}",
+              "type": "string"
+            },
+            {
+              "id": "fecha",
+              "name": "fecha",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-720, 0],
+      "id": "extract-fields",
+      "name": "Extraer campos"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO mensajes (conversation_id, contact_name, contact_phone, mensaje, direccion) VALUES ('{{ $json.conversation_id }}', '{{ $json.contact_name }}', '{{ $json.contact_phone }}', '{{ $json.mensaje.replace(/'/g, \"''\") }}', 'entrante') RETURNING id;"
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-480, 0],
+      "id": "save-message",
+      "name": "Guardar mensaje",
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CRED_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT m.conversation_id, m.contact_name, m.contact_phone, m.mensaje, m.fecha FROM mensajes m WHERE m.conversation_id = '{{ $('Extraer campos').item.json.conversation_id }}' ORDER BY m.fecha DESC LIMIT 10;"
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-240, 0],
+      "id": "get-history",
+      "name": "Obtener historial",
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CRED_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, contact_name, contact_phone, tipo, descripcion, fecha_vencimiento, prioridad FROM tareas WHERE estado = 'pendiente' ORDER BY fecha_vencimiento ASC LIMIT 5;"
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-240, 200],
+      "id": "get-pending-tasks",
+      "name": "Tareas pendientes",
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CRED_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Sos mi asistente personal. Analizá este mensaje de WhatsApp y el contexto, y decidí qué acciones tomar.\n\n**Mensaje nuevo de {{ $('Extraer campos').item.json.contact_name }} ({{ $('Extraer campos').item.json.contact_phone }}):**\n{{ $('Extraer campos').item.json.mensaje }}\n\n**Historial reciente de esta conversación:**\n{{ $('Obtener historial').all().map(m => m.json.fecha + ' - ' + m.json.mensaje).join('\\n') }}\n\n**Mis tareas pendientes actuales:**\n{{ $('Tareas pendientes').all().map(t => t.json.tipo + ': ' + t.json.descripcion + ' (' + t.json.contact_name + ') - Vence: ' + t.json.fecha_vencimiento).join('\\n') }}\n\nFecha y hora actual: {{ $now.format('dd/MM/yyyy HH:mm') }}\n",
+        "hasOutputParser": true,
+        "options": {
+          "maxIterations": 5,
+          "systemMessage": "Sos el asistente personal de Hernán. Tu trabajo es analizar mensajes de WhatsApp y ayudarlo a organizarse. Cuando alguien le pide algo, agenda una reunión, o hay un seguimiento pendiente, creá una tarea. Si el mensaje es solo informativo, igual resumí qué pasó. Siempre respondé en español rioplatense, de forma concisa y útil."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [80, 0],
+      "id": "ai-agent",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "llama-3.3-70b-versatile",
+        "options": {
+          "maxTokensToSample": 2048,
+          "temperature": 0
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [-80, 240],
+      "id": "groq-model",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "AqcJGrSqUB6ZaQEF",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"resumen\": {\n      \"type\": \"string\",\n      \"description\": \"Resumen breve de qué trata el mensaje y qué hay que hacer.\"\n    },\n    \"aviso_whatsapp\": {\n      \"type\": \"string\",\n      \"description\": \"Mensaje corto para enviarte a vos por WhatsApp avisándote de este mensaje. Incluí el nombre del contacto y qué pide o dice. Si no requiere acción urgente, dejar vacío.\"\n    },\n    \"crear_tarea\": {\n      \"type\": \"boolean\",\n      \"description\": \"true si hay que crear una tarea de seguimiento, llamado o reunión.\"\n    },\n    \"tarea_tipo\": {\n      \"type\": \"string\",\n      \"enum\": [\"llamado\", \"seguimiento\", \"reunion\", \"recordatorio\", \"otro\"],\n      \"description\": \"Tipo de tarea a crear. Solo si crear_tarea es true.\"\n    },\n    \"tarea_descripcion\": {\n      \"type\": \"string\",\n      \"description\": \"Descripción clara de qué hay que hacer. Solo si crear_tarea es true.\"\n    },\n    \"tarea_fecha_vencimiento\": {\n      \"type\": \"string\",\n      \"description\": \"Fecha sugerida para hacer la tarea en formato YYYY-MM-DD. Solo si crear_tarea es true.\"\n    },\n    \"tarea_prioridad\": {\n      \"type\": \"string\",\n      \"enum\": [\"alta\", \"media\", \"baja\"],\n      \"description\": \"Prioridad de la tarea. Solo si crear_tarea es true.\"\n    }\n  },\n  \"required\": [\"resumen\", \"crear_tarea\"]\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [80, 240],
+      "id": "output-parser",
+      "name": "Output Parser"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "has-task",
+              "leftValue": "={{ $json.output.crear_tarea }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [400, 0],
+      "id": "check-task",
+      "name": "¿Crear tarea?"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO tareas (conversation_id, contact_name, contact_phone, tipo, descripcion, fecha_vencimiento, prioridad) VALUES ('{{ $('Extraer campos').item.json.conversation_id }}', '{{ $('Extraer campos').item.json.contact_name }}', '{{ $('Extraer campos').item.json.contact_phone }}', '{{ $json.output.tarea_tipo }}', '{{ $json.output.tarea_descripcion.replace(/'/g, \"''\") }}', '{{ $json.output.tarea_fecha_vencimiento }}', '{{ $json.output.tarea_prioridad }}') RETURNING id;"
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [640, -100],
+      "id": "create-task",
+      "name": "Crear tarea en PostgreSQL",
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CRED_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "has-aviso",
+              "leftValue": "={{ $('AI Agent').item.json.output.aviso_whatsapp }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [640, 200],
+      "id": "check-aviso",
+      "name": "¿Hay aviso?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://TU_CHATWOOT_URL/api/v1/accounts/TU_ACCOUNT_ID/conversations/TU_CONVERSATION_ID_PERSONAL/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $('AI Agent').item.json.output.aviso_whatsapp }}"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            },
+            {
+              "name": "private",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [880, 200],
+      "id": "send-whatsapp",
+      "name": "Enviar aviso por WhatsApp"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1,
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1200, 600],
+      "id": "daily-trigger",
+      "name": "Resumen diario 9AM"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, contact_name, contact_phone, tipo, descripcion, fecha_vencimiento, prioridad FROM tareas WHERE estado = 'pendiente' AND fecha_vencimiento <= CURRENT_DATE + INTERVAL '2 days' ORDER BY prioridad DESC, fecha_vencimiento ASC;"
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [-960, 600],
+      "id": "get-due-tasks",
+      "name": "Tareas por vencer",
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CRED_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "typeValidation": "loose", "version": 3 },
+          "conditions": [
+            {
+              "id": "has-tasks",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-720, 600],
+      "id": "check-due",
+      "name": "¿Hay tareas?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "resumen-tareas",
+              "name": "resumen",
+              "value": "=📋 *Tareas pendientes para hoy:*\n\n{{ $('Tareas por vencer').all().map((t, i) => (i+1) + '. ' + t.json.tipo.toUpperCase() + ' - ' + t.json.contact_name + '\\n   ' + t.json.descripcion + '\\n   📅 Vence: ' + t.json.fecha_vencimiento + ' | Prioridad: ' + t.json.prioridad).join('\\n\\n') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-480, 600],
+      "id": "build-summary",
+      "name": "Armar resumen"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://TU_CHATWOOT_URL/api/v1/accounts/TU_ACCOUNT_ID/conversations/TU_CONVERSATION_ID_PERSONAL/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "={{ $json.resumen }}"
+            },
+            {
+              "name": "message_type",
+              "value": "outgoing"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-240, 600],
+      "id": "send-daily-summary",
+      "name": "Enviar resumen diario"
+    }
+  ],
+  "connections": {
+    "Chatwoot Webhook": {
+      "main": [[{ "node": "Solo mensajes entrantes", "type": "main", "index": 0 }]]
+    },
+    "Solo mensajes entrantes": {
+      "main": [
+        [{ "node": "Extraer campos", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Extraer campos": {
+      "main": [[{ "node": "Guardar mensaje", "type": "main", "index": 0 }]]
+    },
+    "Guardar mensaje": {
+      "main": [[
+        { "node": "Obtener historial", "type": "main", "index": 0 },
+        { "node": "Tareas pendientes", "type": "main", "index": 0 }
+      ]]
+    },
+    "Obtener historial": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "Tareas pendientes": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "AI Agent": {
+      "main": [[{ "node": "¿Crear tarea?", "type": "main", "index": 0 }]]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Output Parser": {
+      "ai_outputParser": [[{ "node": "AI Agent", "type": "ai_outputParser", "index": 0 }]]
+    },
+    "¿Crear tarea?": {
+      "main": [
+        [{ "node": "Crear tarea en PostgreSQL", "type": "main", "index": 0 }],
+        [{ "node": "¿Hay aviso?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Crear tarea en PostgreSQL": {
+      "main": [[{ "node": "¿Hay aviso?", "type": "main", "index": 0 }]]
+    },
+    "¿Hay aviso?": {
+      "main": [
+        [{ "node": "Enviar aviso por WhatsApp", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Resumen diario 9AM": {
+      "main": [[{ "node": "Tareas por vencer", "type": "main", "index": 0 }]]
+    },
+    "Tareas por vencer": {
+      "main": [[{ "node": "¿Hay tareas?", "type": "main", "index": 0 }]]
+    },
+    "¿Hay tareas?": {
+      "main": [
+        [{ "node": "Armar resumen", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Armar resumen": {
+      "main": [[{ "node": "Enviar resumen diario", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "asistente-personal-001",
+  "tags": []
+}

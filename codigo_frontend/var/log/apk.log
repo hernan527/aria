@@ -1,0 +1,200 @@
+
+Running `apk add --no-cache --virtual .checksum-deps openssl` at 2026-02-04 23:53:20
+apk-tools 3.0.3-r1, compiled for x86_64.
+(1/2) Installing openssl (3.5.5-r0)
+(2/2) Installing .checksum-deps (20260204.235320)
+Executing busybox-1.37.0-r30.trigger
+OK: 9023 KiB in 18 packages
+
+Running `apk add -X https://nginx.org/packages/mainline/alpine/v3.23/main --no-cache nginx=1.29.5-r1` at 2026-02-04 23:53:20
+apk-tools 3.0.3-r1, compiled for x86_64.
+(1/2) Installing pcre2 (10.47-r0)
+(2/2) Installing nginx (1.29.5-r1)
+  Executing nginx-1.29.5-r1.pre-install
+  Executing nginx-1.29.5-r1.post-install
+  * ----------------------------------------------------------------------
+  * 
+  * Thanks for using nginx!
+  * 
+  * Please find the official documentation for nginx here:
+  * https://nginx.org/en/docs/
+  * 
+  * Please subscribe to nginx-announce mailing list to get
+  * the most important news about nginx:
+  * https://nginx.org/en/support.html
+  * 
+  * Commercial subscriptions for nginx are available on:
+  * https://nginx.com/products/
+  * 
+  * ----------------------------------------------------------------------
+Executing busybox-1.37.0-r30.trigger
+OK: 12.2 MiB in 20 packages
+
+Running `apk del --no-network .checksum-deps` at 2026-02-04 23:53:21
+apk-tools 3.0.3-r1, compiled for x86_64.
+WARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/APKINDEX.tar.gz: No such file or directory
+WARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.23/community/x86_64/APKINDEX.tar.gz: No such file or directory
+(1/2) Purging .checksum-deps (20260204.235320)
+(2/2) Purging openssl (3.5.5-r0)
+Executing busybox-1.37.0-r30.trigger
+OK: 11.4 MiB in 18 packages
+
+Running `apk add --no-cache gettext-envsubst` at 2026-02-04 23:53:21
+apk-tools 3.0.3-r1, compiled for x86_64.
+(1/2) Installing libintl (0.24.1-r1)
+(2/2) Installing gettext-envsubst (0.24.1-r1)
+Executing busybox-1.37.0-r30.trigger
+OK: 11.6 MiB in 20 packages
+
+Running `apk add --no-cache tzdata` at 2026-02-04 23:53:22
+apk-tools 3.0.3-r1, compiled for x86_64.
+(1/1) Installing tzdata (2025c-r0)
+OK: 12.0 MiB in 21 packages
+
+Running `apk add --no-cache --virtual .checksum-deps openssl` at 2026-02-05 00:07:14
+apk-tools 3.0.3-r1, compiled for x86_64.
+(1/2) Installing openssl (3.5.5-r0)
+(2/2) Installing .checksum-deps (20260205.000715)
+Executing busybox-1.37.0-r30.trigger
+OK: 12.8 MiB in 23 packages
+
+Running `apk add -X https://nginx.org/packages/mainline/alpine/v3.23/main --no-cache nginx=1.29.5-r1 nginx-module-xslt=1.29.5-r1 nginx-module-geoip=1.29.5-r1 nginx-module-image-filter=1.29.5-r1 nginx-module-njs=1.29.5.0.9.5-r1 nginx-module-acme=1.29.5.0.3.1-r1` at 2026-02-05 00:07:15
+apk-tools 3.0.3-r1, compiled for x86_64.
+( 1/42) Installing libgcc (15.2.0-r2)
+( 2/42) Installing nginx-module-acme (1.29.5.0.3.1-r1)
+  Executing nginx-module-acme-1.29.5.0.3.1-r1.post-install
+  * ----------------------------------------------------------------------
+  * 
+  * The nginx-acme for nginx have been installed.
+  * To enable these modules, add the following to /etc/nginx/nginx.conf
+  * and reload nginx:
+  * 
+  *     load_module modules/ngx_http_acme_module.so;
+  * 
+  * Please refer to the module documentation for further details:
+  * https://nginx.org/en/docs/http/ngx_http_acme_module.html
+  * 
+  * ----------------------------------------------------------------------
+( 3/42) Installing geoip (1.6.12-r6)
+( 4/42) Installing nginx-module-geoip (1.29.5-r1)
+  Executing nginx-module-geoip-1.29.5-r1.post-install
+  * ----------------------------------------------------------------------
+  * 
+  * The GeoIP dynamic modules for nginx have been installed.
+  * To enable these modules, add the following to /etc/nginx/nginx.conf
+  * and reload nginx:
+  * 
+  *     load_module modules/ngx_http_geoip_module.so;
+  *     load_module modules/ngx_stream_geoip_module.so;
+  * 
+  * Please refer to the modules documentation for further details:
+  * https://nginx.org/en/docs/http/ngx_http_geoip_module.html
+  * https://nginx.org/en/docs/stream/ngx_stream_geoip_module.html
+  * 
+  * ----------------------------------------------------------------------
+( 5/42) Installing libxau (1.0.12-r0)
+( 6/42) Installing libmd (1.1.0-r0)
+( 7/42) Installing libbsd (0.12.2-r0)
+( 8/42) Installing libxdmcp (1.1.5-r1)
+( 9/42) Installing libxcb (1.17.0-r1)
+(10/42) Installing libx11 (1.8.12-r1)
+(11/42) Installing libxext (1.3.6-r2)
+(12/42) Installing libice (1.1.2-r0)
+(13/42) Installing libuuid (2.41.2-r0)
+(14/42) Installing libsm (1.2.6-r0)
+(15/42) Installing libxt (1.3.1-r0)
+(16/42) Installing libxpm (3.5.17-r0)
+(17/42) Installing aom-libs (3.13.1-r1)
+(18/42) Installing libdav1d (1.5.2-r0)
+(19/42) Installing libjpeg-turbo (3.1.2-r0)
+(20/42) Installing libstdc++ (15.2.0-r2)
+(21/42) Installing libyuv (0.0.1887.20251502-r1)
+(22/42) Installing libavif (1.3.0-r0)
+(23/42) Installing libexpat (2.7.4-r0)
+(24/42) Installing brotli-libs (1.2.0-r0)
+(25/42) Installing libbz2 (1.0.8-r6)
+(26/42) Installing libpng (1.6.54-r0)
+(27/42) Installing freetype (2.14.1-r0)
+(28/42) Installing fontconfig (2.17.1-r0)
+(29/42) Installing libsharpyuv (1.6.0-r0)
+(30/42) Installing libwebp (1.6.0-r0)
+(31/42) Installing zstd-libs (1.5.7-r2)
+(32/42) Installing tiff (4.7.1-r0)
+(33/42) Installing libgd (2.3.3-r10)
+(34/42) Installing nginx-module-image-filter (1.29.5-r1)
+  Executing nginx-module-image-filter-1.29.5-r1.post-install
+  * ----------------------------------------------------------------------
+  * 
+  * The image filter dynamic module for nginx has been installed.
+  * To enable this module, add the following to /etc/nginx/nginx.conf
+  * and reload nginx:
+  * 
+  *     load_module modules/ngx_http_image_filter_module.so;
+  * 
+  * Please refer to the module documentation for further details:
+  * https://nginx.org/en/docs/http/ngx_http_image_filter_module.html
+  * 
+  * ----------------------------------------------------------------------
+(35/42) Installing ncurses-terminfo-base (6.5_p20251123-r0)
+(36/42) Installing libncursesw (6.5_p20251123-r0)
+(37/42) Installing libedit (20251016.3.1-r0)
+(38/42) Installing xz-libs (5.8.2-r0)
+(39/42) Installing libxml2 (2.13.9-r0)
+(40/42) Installing nginx-module-njs (1.29.5.0.9.5-r1)
+  Executing nginx-module-njs-1.29.5.0.9.5-r1.post-install
+  * ----------------------------------------------------------------------
+  * 
+  * The njs dynamic modules for nginx have been installed.
+  * To enable these modules, add the following to /etc/nginx/nginx.conf
+  * and reload nginx:
+  * 
+  *     load_module modules/ngx_http_js_module.so;
+  *     load_module modules/ngx_stream_js_module.so;
+  * 
+  * Please refer to the modules documentation for further details:
+  * https://nginx.org/en/docs/njs/
+  * https://nginx.org/en/docs/http/ngx_http_js_module.html
+  * https://nginx.org/en/docs/stream/ngx_stream_js_module.html
+  * 
+  * ----------------------------------------------------------------------
+(41/42) Installing libxslt (1.1.43-r3)
+(42/42) Installing nginx-module-xslt (1.29.5-r1)
+  Executing nginx-module-xslt-1.29.5-r1.post-install
+  * ----------------------------------------------------------------------
+  * 
+  * The xslt dynamic module for nginx has been installed.
+  * To enable this module, add the following to /etc/nginx/nginx.conf
+  * and reload nginx:
+  * 
+  *     load_module modules/ngx_http_xslt_filter_module.so;
+  * 
+  * Please refer to the module documentation for further details:
+  * https://nginx.org/en/docs/http/ngx_http_xslt_module.html
+  * 
+  * ----------------------------------------------------------------------
+Executing busybox-1.37.0-r30.trigger
+OK: 55.8 MiB in 65 packages
+
+Running `apk del --no-network .checksum-deps` at 2026-02-05 00:07:17
+apk-tools 3.0.3-r1, compiled for x86_64.
+WARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/APKINDEX.tar.gz: No such file or directory
+WARNING: opening from cache https://dl-cdn.alpinelinux.org/alpine/v3.23/community/x86_64/APKINDEX.tar.gz: No such file or directory
+(1/2) Purging .checksum-deps (20260205.000715)
+(2/2) Purging openssl (3.5.5-r0)
+Executing busybox-1.37.0-r30.trigger
+OK: 55.0 MiB in 63 packages
+
+Running `apk add --no-cache curl ca-certificates` at 2026-02-05 00:07:17
+apk-tools 3.0.3-r1, compiled for x86_64.
+(1/9) Installing ca-certificates (20251003-r0)
+(2/9) Installing c-ares (1.34.6-r0)
+(3/9) Installing libunistring (1.4.1-r0)
+(4/9) Installing libidn2 (2.3.8-r0)
+(5/9) Installing nghttp2-libs (1.68.0-r0)
+(6/9) Installing nghttp3 (1.13.1-r0)
+(7/9) Installing libpsl (0.21.5-r3)
+(8/9) Installing libcurl (8.17.0-r1)
+(9/9) Installing curl (8.17.0-r1)
+Executing busybox-1.37.0-r30.trigger
+Executing ca-certificates-20251003-r0.trigger
+OK: 58.8 MiB in 72 packages
