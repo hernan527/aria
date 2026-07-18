@@ -189,6 +189,7 @@ function StepBar({ current }) {
 // ── Step 1: Datos básicos ─────────────────────────────────────────────────────
 
 function Step1({ form, onChange, onNext, creating }) {
+  const [showFlowPicker, setShowFlowPicker] = useState(false)
   return (
     <form onSubmit={e => { e.preventDefault(); onNext() }} className="space-y-5">
       <Field label="Nombre del agente" required description="Como se va a identificar el agente en una conversación">
@@ -210,6 +211,7 @@ function Step1({ form, onChange, onNext, creating }) {
         <input name="nationality" value={form.nationality} onChange={onChange}
           placeholder="Ej: Argentina" className={inputCls} />
       </Field>
+
       <div className="flex justify-end pt-2">
         <button type="submit" disabled={!form.name.trim() || creating}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-aria-500 hover:bg-aria-600 text-white text-sm font-medium transition-colors disabled:opacity-50">
@@ -271,7 +273,6 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
   const [tab,      setTab]      = useState('url')
   const [kbItems,  setKbItems]  = useState([])
   const [fileList, setFileList] = useState([])
-  const [nsId,     setNsId]     = useState(namespaceId || null)
   const [loading,  setLoading]  = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [error,    setError]    = useState('')
@@ -284,35 +285,22 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
   const [textTitle, setTextTitle] = useState('')
   const [textBody,  setTextBody]  = useState('')
 
-  async function refresh(id) {
-    const ns = id || nsId
-    if (!projectId || !ns) return
-    const data = await api.getKbContents(projectId, ns).catch(() => null)
-    setKbItems(Array.isArray(data?.kbs) ? data.kbs : [])
-    if (botId) {
-      const files = await api.getAgentFiles(botId).catch(() => [])
-      setFileList(Array.isArray(files) ? files : [])
-    }
+  async function refresh() {
+    if (!botId) return
+    const items = await api.getAgentKb(botId).catch(() => [])
+    setKbItems(Array.isArray(items) ? items : [])
+    const files = await api.getAgentFiles(botId).catch(() => [])
+    setFileList(Array.isArray(files) ? files : [])
   }
 
-  // Cuando llega el namespaceId desde el padre, actualizar nsId y cargar
-  useEffect(() => {
-    if (namespaceId) {
-      setNsId(namespaceId)
-      refresh(namespaceId)
-    } else if (botId && projectId) {
-      api.ensureKbNamespace(botId, projectId)
-        .then(({ namespaceId: id }) => { setNsId(id); refresh(id) })
-        .catch(() => {})
-    }
-  }, [namespaceId]) // eslint-disable-line
+  useEffect(() => { if (botId) refresh() }, [botId]) // eslint-disable-line
 
   async function addUrl() {
-    if (!urlInput.trim() || !nsId) return
+    if (!urlInput.trim() || !botId) return
     setScraping(true); setError('')
     try {
       const url = urlInput.trim().startsWith('http') ? urlInput.trim() : `https://${urlInput.trim()}`
-      await api.createKbContent(projectId, { type: 'url', name: url, source: url, content: '', namespace: nsId })
+      await api.addAgentKbItem(botId, { type: 'url', title: url, url })
       setUrlInput('')
       await refresh()
     } catch (e) { setError(e.message) }
@@ -320,10 +308,10 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
   }
 
   async function addFaq() {
-    if (!faqQ.trim() || !faqA.trim() || !nsId) return
+    if (!faqQ.trim() || !faqA.trim() || !botId) return
     setLoading(true); setError('')
     try {
-      await api.createKbContent(projectId, { type: 'faq', name: faqQ.trim(), content: `${faqQ.trim()}\n${faqA.trim()}`, namespace: nsId })
+      await api.addAgentKbItem(botId, { type: 'faq', title: faqQ.trim(), content: faqA.trim() })
       setFaqQ(''); setFaqA('')
       await refresh()
     } catch (e) { setError(e.message) }
@@ -331,10 +319,10 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
   }
 
   async function addText() {
-    if (!textBody.trim() || !nsId) return
+    if (!textBody.trim() || !botId) return
     setLoading(true); setError('')
     try {
-      await api.createKbContent(projectId, { type: 'text', name: textTitle.trim() || 'Texto', content: textBody.trim(), namespace: nsId })
+      await api.addAgentKbItem(botId, { type: 'text', title: textTitle.trim() || 'Texto', content: textBody.trim() })
       setTextTitle(''); setTextBody('')
       await refresh()
     } catch (e) { setError(e.message) }
@@ -360,9 +348,9 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
     setLoading(false)
   }
 
-  async function deleteItem(contentId) {
-    setDeleting(contentId)
-    try { await api.deleteKbContent(projectId, contentId); await refresh() }
+  async function deleteItem(itemId) {
+    setDeleting(itemId)
+    try { await api.deleteAgentKbItem(botId, itemId); await refresh() }
     catch (e) { setError(e.message) }
     setDeleting(null)
   }
@@ -393,8 +381,7 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
       <div>
         <p className="text-sm font-medium text-white/70 mb-1">Base de conocimiento del agente</p>
         <p className="text-xs text-white/35 mb-3">
-          Esta información es exclusiva de <strong className="text-white/50">este agente</strong>.
-          El LLM la usará para responder preguntas. Cada agente tiene su propia KB.
+          Exclusiva de este agente. Se indexa en Dify Knowledge Base (RAG con Qdrant) para búsqueda semántica.
         </p>
 
         {/* Tabs */}
@@ -470,8 +457,7 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
         {tab === 'file' && (
           <div className="space-y-3">
             <p className="text-xs text-white/40">
-              Subí documentos. Los .txt/.md/.json/.html se leen y el agente los puede usar.
-              Los PDF/doc quedan guardados como referencia.
+              Subí documentos (PDF, Word, Excel, TXT, CSV…). Se indexan en Dify KB para búsqueda semántica automática.
             </p>
             <div
               onDragOver={e => { e.preventDefault(); setDrag(true) }}
@@ -481,7 +467,7 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
               className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-colors
                 ${drag ? 'border-aria-500 bg-aria-500/10' : 'border-white/10 hover:border-white/20'}`}>
               <input ref={fileRef} type="file" multiple className="hidden"
-                accept=".pdf,.doc,.docx,.pptx,.txt,.md,.json,.html"
+                accept=".pdf,.doc,.docx,.pptx,.txt,.md,.json,.html,.csv,.xlsx"
                 onChange={e => uploadFile(e.target.files)} />
               {loading
                 ? <Loader2 size={20} className="mx-auto mb-2 text-aria-400 animate-spin" />
@@ -491,23 +477,19 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
             {fileList.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-xs text-white/40 font-medium">{fileList.length} archivo{fileList.length !== 1 ? 's' : ''} guardado{fileList.length !== 1 ? 's' : ''}:</p>
-                {fileList.map(f => {
-                  const ext = f.filename.split('.').pop().toLowerCase()
-                  const readable = ['txt','md','json','html'].includes(ext)
-                  return (
-                    <div key={f.id} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/4 border border-white/8">
-                      <FileUp size={13} className="text-white/30 shrink-0" />
-                      <span className="text-xs text-white/70 flex-1 truncate">{f.filename}</span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${readable ? 'bg-green-500/20 text-green-400' : 'bg-white/8 text-white/30'}`}>
-                        {readable ? 'leíble' : 'referencia'}
-                      </span>
-                      <button type="button" onClick={() => deleteFile(f.id)} disabled={deleting === 'f_' + f.id}
-                        className="text-white/20 hover:text-red-400 transition-colors shrink-0">
-                        {deleting === 'f_' + f.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-                      </button>
-                    </div>
-                  )
-                })}
+                {fileList.map(f => (
+                  <div key={f.id} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/4 border border-white/8">
+                    <FileUp size={13} className="text-white/30 shrink-0" />
+                    <span className="text-xs text-white/70 flex-1 truncate">{f.filename}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${f.dify_document_id ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/15 text-yellow-400/70'}`}>
+                      {f.dify_document_id ? 'indexado' : 'local'}
+                    </span>
+                    <button type="button" onClick={() => deleteFile(f.id)} disabled={deleting === 'f_' + f.id}
+                      className="text-white/20 hover:text-red-400 transition-colors shrink-0">
+                      {deleting === 'f_' + f.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -520,7 +502,7 @@ function Step2({ botId, projectId, namespaceId, form, onChange, onBack, onNext }
               {kbItems.length} {kbItems.length === 1 ? 'elemento' : 'elementos'} en la base de conocimiento
             </p>
             {kbItems.map(item => (
-              <KbItemRow key={item._id || item.id} item={item} onDelete={deleteItem} deleting={deleting} />
+              <KbItemRow key={item.id} item={{...item, _id: item.id, name: item.title}} onDelete={deleteItem} deleting={deleting} />
             ))}
           </div>
         )}
@@ -650,7 +632,7 @@ function Step4({ progress }) {
         <p className="text-xs text-white/40">Este proceso puede llevar unos segundos</p>
       </div>
       <div className="w-64 space-y-3">
-        {['Generar instrucciones', 'Configurar agente en Tiledesk', 'Listo'].map((label, i) => (
+        {['Generar instrucciones', 'Configurar agente en Dify', 'Listo'].map((label, i) => (
           <div key={i} className="flex items-center gap-3">
             <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0
               ${progress > i ? 'bg-aria-500' : progress === i ? 'bg-aria-500/40 animate-pulse' : 'bg-white/10'}`}>
@@ -726,7 +708,7 @@ function Playground({ botId, projectId }) {
         <div>
           <p className="text-xs font-semibold text-white">Probá tu Agente</p>
           <p className="text-[11px] text-white/35 mt-0.5">
-            {botId ? 'Chat en tiempo real con el bot en Tiledesk' : 'Guardá el agente primero para probarlo'}
+            {botId ? 'Chat en tiempo real con el agente Dify' : 'Guardá el agente primero para probarlo'}
           </p>
         </div>
         {msgs.length > 0 && !initing && (
@@ -837,7 +819,7 @@ export default function AgentWizard() {
   const [step,         setStep]         = useState(0)
   const [draftBotId,      setDraftBotId]      = useState(null)
   const [kbNamespaceId,   setKbNamespaceId]   = useState(null)
-  const [creating,        setCreating]        = useState(false)
+  const [creating,     setCreating]     = useState(false)
   const [genProgress,  setGenProgress]  = useState(0)
   const [instructions, setInstructions] = useState('')
   const [saving,       setSaving]       = useState(false)
@@ -847,12 +829,11 @@ export default function AgentWizard() {
   const [form, setForm] = useState({
     name: '', tone: 'Empático', nationality: 'Argentina', active: true,
     company_name: '', company_description: '', websites: [''], files: [],
-    temperature: 1.0, top_p: 1.0,
+    temperature: 0.7, top_p: 1.0,
     channels: ['__all__'], derivation_notes: '', derivation_users: ['__all__'],
   })
 
   const { data: channels } = useApi(() => api.getWahaSessions(), [])
-  const { data: agentList } = useApi(() => api.getAgents(projectId), [projectId])
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -871,11 +852,8 @@ export default function AgentWizard() {
       setError(null)
       try {
         const { botId, kbNamespaceId: nsId } = await api.createAgentDraft({
-          projectId,
           name: form.name,
           description: '',
-          language: 'es',
-          welcome_msg: '',
           template_id: template?.template_id || template?.id,
         })
         setDraftBotId(botId)
@@ -905,7 +883,8 @@ export default function AgentWizard() {
         websites:            form.websites,
         temperature:         form.temperature,
         derivation_notes:    form.derivation_notes,
-        bot_id:              draftBotId,  // para incluir KB en las instrucciones generadas
+        bot_id:              draftBotId,
+        template_id:         template?.id,
       })
       setInstructions(ins)
       setGenProgress(2)
@@ -934,16 +913,19 @@ export default function AgentWizard() {
     setError(null)
     try {
       await api.finalizeAgent(draftBotId, {
-        projectId,
-        name:         form.name,
-        description:  form.company_name ? `Agente para ${form.company_name}` : '',
-        welcome_msg:  '',
+        name:                form.name,
+        description:         form.company_name ? `Agente para ${form.company_name}` : '',
         instructions,
-        template_id:  template?.template_id || template?.id,
-        active:       form.active,
-        tone:         form.tone,
-        nationality:  form.nationality,
-        company_name: form.company_name || form.name,
+        template_id:         template?.template_id || template?.id,
+        tone:                form.tone,
+        nationality:         form.nationality,
+        company_name:        form.company_name || form.name,
+        company_description: form.company_description,
+        derivation_notes:    form.derivation_notes,
+        temperature:         form.temperature,
+        top_p:               form.top_p,
+        channels:            form.channels,
+        derivation_users:    form.derivation_users,
       })
       if (setAsDefault) {
         await api.setActiveBotId(draftBotId)
@@ -1052,7 +1034,7 @@ export default function AgentWizard() {
               <Step3 form={form} onChange={handleChange}
                 onBack={() => setStep(2)} onNext={handleStep3Next}
                 channels={Array.isArray(channels) ? channels : []}
-                agents={Array.isArray(agentList) ? agentList : []} />
+                agents={[]} />
             </>
           )}
 

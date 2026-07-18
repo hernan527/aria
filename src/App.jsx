@@ -19,6 +19,8 @@ import Tutorials from './pages/Tutorials'
 import Settings from './pages/Settings'
 import AgentWizard from './pages/AgentWizard'
 import AgentDetail from './pages/AgentDetail'
+import QuickCreate from './pages/QuickCreate'
+import AcceptInvite from './pages/AcceptInvite'
 
 function RequireAuth({ children }) {
   const { loading } = useAuth()
@@ -41,10 +43,12 @@ export default function App() {
         <NotificationsProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<AcceptInvite />} />
             <Route path="/" element={<RequireAuth><AppLayout /></RequireAuth>}>
               <Route index element={<Dashboard />} />
               <Route path="agents" element={<Agents />} />
               <Route path="agents/new" element={<AgentWizard />} />
+              <Route path="agents/quick" element={<QuickCreate />} />
               <Route path="agents/edit/:botId" element={<AgentWizard />} />
               <Route path="agents/:botId" element={<AgentDetail />} />
               <Route path="conversations" element={<Conversations />} />

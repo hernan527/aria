@@ -18,6 +18,16 @@ services:
       - WAHA_URL=https://waha.saludok.com.ar
       - WAHA_KEY=55562b186a5e30984948325242f543a45ec21737458271470911e7ba586a1acc8119b212e13c227d01b24c2dd32a76e51576632387a4e8311b0a61329995dd0d
       - ANTHROPIC_API_KEY=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
+      - DIFY_URL=https://dify.saludok.com.ar
+      - DIFY_ADMIN_EMAIL=hernan527@gmail.com
+      - DIFY_ADMIN_PASSWORD=Rolling2570@
+      - EVO_URL=https://evogo.saludok.com.ar
+      - EVO_KEY=ea6d4ff11cc322232e0f23c407e67d7f
+      - SMTP_HOST=smtp.zoho.com
+      - SMTP_PORT=587
+      - SMTP_USER=soporte@saludok.com.ar
+      - SMTP_PASS=HeUpyc8LAJMs
+      - SMTP_FROM=Aria <soporte@saludok.com.ar>
     deploy:
       mode: replicated
       replicas: 1

@@ -190,43 +190,41 @@ function FunnelModal({ funnel, onSave, onClose }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function Funnels() {
-  const { project } = useAuth()
-  const navigate    = useNavigate()
-  const projectId   = project?._id || project?.id
+  const navigate = useNavigate()
 
   const [funnels,      setFunnels]      = useState([])
   const [selectedId,   setSelectedId]   = useState(null)
   const [contacts,     setContacts]     = useState([])
   const [labels,       setLabels]       = useState([])
-  const [activeLabel,  setActiveLabel]  = useState(null)  // filtro por etiqueta
-  const [stageMap,     setStageMap]     = useState({})   // { leadId: { stage, lead_status } }
+  const [activeLabel,  setActiveLabel]  = useState(null)
+  const [stageMap,     setStageMap]     = useState({})
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
   const [saving,       setSaving]       = useState(false)
   const [showModal,    setShowModal]    = useState(false)
-  const [editingFunnel,setEditingFunnel]= useState(null)  // null = new
+  const [editingFunnel,setEditingFunnel]= useState(null)
 
   // ── Load data ───────────────────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
-    if (!projectId) return
     setLoading(true); setError(null)
     try {
       const [fData, cData, sData, lData] = await Promise.all([
         api.getFunnels(),
-        api.getContacts(projectId, { limit: 300 }),
+        api.getContacts(null, { limit: 300 }),
         api.getFunnelStages(),
-        api.getLabels(projectId),
+        api.getLabels(null),
       ])
       setFunnels(fData || [])
       if (fData?.length && !selectedId) setSelectedId(fData[0].id)
       const list = (Array.isArray(cData) ? cData : (cData?.leads || []))
         .filter(c => !c.attributes?.aria_test_contact)
+        .map(c => ({ ...c, fullname: c.fullname || c.name, _id: c._id || c.id }))
       setContacts(list)
       setStageMap(sData || {})
       setLabels(Array.isArray(lData) ? lData : (lData?.data || lData?.labels || []))
     } catch (e) { setError(e.message) }
     setLoading(false)
-  }, [projectId])
+  }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
 
@@ -289,10 +287,6 @@ export default function Funnels() {
     if (activeLabel) return (c.tags || []).includes(activeLabel)
     return true
   })
-
-  if (!projectId) return (
-    <div className="flex-1 flex items-center justify-center text-white/30 text-sm">Sin proyecto</div>
-  )
 
   return (
     <div className="flex flex-col h-full">

@@ -13,7 +13,7 @@
 
 ## Estado del proyecto — 2026-04-29
 
-### ✅ Funciona en producción — actualizado 2026-04-30
+### ✅ Funciona en producción — actualizado 2026-05-15
 - Login / registro multi-tenant (workspaces)
 - Dashboard con métricas Tiledesk
 - Contactos (CRUD completo + labels + tags)
@@ -33,6 +33,9 @@
 - **Contactos de prueba filtrados**: `test-chat` marca leads con `attributes.aria_test_contact:true`. Contacts y Funnels los excluyen.
 - **Labels en ARIA DB**: `/labels` endpoint propio (Tiledesk `/{id}/labels` no funciona en self-hosted, siempre 500).
 - **Kanban con etiquetas**: carga labels, muestra con colores, filtro por etiqueta en toolbar.
+- **HubSpot CRM**: sync automático de contactos WA → HubSpot (crea Contact + Deal). Token en Settings → Credenciales. Resuelve LIDs a número real vía `msg._data.Info.SenderAlt`.
+- **Sistema de invitaciones**: email opcional + magic link `/register?invite=TOKEN`. SMTP Zoho configurado en env. Al aceptar, crea cuenta en el workspace del invitante.
+- **Wizard Dify**: `create-draft` crea app + dataset en Dify. KB por agente (`dify_dataset_id`). Archivos (PDF, Word, CSV, etc.) subidos al wizard se indexan en Dify KB automáticamente (RAG con Qdrant). Archivos muestran badge "indexado"/"local" según si llegaron a Dify.
 
 ### ⚠️ Pendiente
 - Bot activo por sesión (hoy uno por workspace via `channel_settings.default_bot_id`)
@@ -43,7 +46,9 @@
 - Configurar API key de OpenAI en Tiledesk → Integraciones → AI (para que `gpt_task` del flow funcione)
 - `extBotHistory` persistente (hoy se pierde al reiniciar container — ok para MVP)
 - **Kanban más complejo** — próxima sesión
-- Verificar labels tras Update the stack en Portainer (puede estar corriendo imagen vieja)
+- HubSpot bidireccional (hoy solo ARIA→HubSpot, no HubSpot→ARIA)
+- Permisos de miembros invitados (guardados pero no aplicados en UI)
+- Linking de dataset Dify para agentes legacy creados antes del wizard (requiere `ensure-kb-namespace` equivalente para Dify)
 
 ---
 

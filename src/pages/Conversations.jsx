@@ -653,13 +653,13 @@ function TareasTab({ chat, projectId }) {
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [contacts, ag] = await Promise.all([
+      const [contacts, members] = await Promise.all([
         api.getContacts(projectId, { phone, limit: 1 }),
-        api.getAgents(projectId),
+        api.getWorkspaceMembers().catch(() => []),
       ])
       const c = (Array.isArray(contacts) ? contacts : contacts?.leads || [])[0] || null
       setContact(c)
-      setAgents(Array.isArray(ag) ? ag : [])
+      setAgents(Array.isArray(members) ? members.map(m => ({ _id: m.id, firstname: m.name || m.email, lastname: '', email: m.email })) : [])
       if (c) {
         const t = await api.getTasks({ lead_id: c._id })
         setTasks(Array.isArray(t) ? t : [])

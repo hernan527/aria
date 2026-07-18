@@ -749,6 +749,7 @@ export default function Contacts() {
 
   const contacts = (Array.isArray(data) ? data : (data?.leads || data?.contacts || []))
     .filter(c => !c.attributes?.aria_test_contact)
+    .map(c => ({ ...c, fullname: c.fullname || c.name, _id: c._id || c.id }))
   const labels   = Array.isArray(labelsData) ? labelsData : (labelsData?.data || labelsData?.labels || [])
 
   // color map: title → color

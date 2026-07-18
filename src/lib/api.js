@@ -46,8 +46,8 @@ export const api = {
     return request(`/tiledesk/${projectId}/requests?${qs}`)
   },
 
-  getContactRequests: (projectId, contactId) =>
-    request(`/tiledesk/${projectId}/requests?lead_id=${contactId}&limit=20`),
+  getContactRequests: (_projectId, contactId) =>
+    request(`/contacts/${contactId}/conversations`),
 
   getMessageStats: (projectId, start, end) => {
     const qs = new URLSearchParams({ start, end }).toString()
@@ -78,50 +78,31 @@ export const api = {
   reopenConversation: (projectId, requestId) =>
     request(`/tiledesk/${projectId}/requests/${requestId}/reopen`, { method: 'PUT' }),
 
-  // ── Contactos (Tiledesk los llama "leads") ────────────────────────────────
-  // Schema real:
-  //   top-level: fullname, email, phone, company, note, streetAddress, city, region, zipcode, country, tags[]
-  //   attributes: objeto libre — solo para datos del widget (browser, sourcePage, etc.)
-  getContacts: (projectId, params = {}) => {
+  // ── Contactos (ARIA DB) ───────────────────────────────────────────────────────
+  getContacts: (_projectId, params = {}) => {
     const qs = new URLSearchParams(params).toString()
-    return request(`/tiledesk/${projectId}/leads?${qs}`)
+    return request(`/contacts?${qs}`)
   },
 
-  getContactById: (projectId, contactId) =>
-    request(`/tiledesk/${projectId}/leads/${contactId}`),
+  getContactById: (_projectId, contactId) =>
+    request(`/contacts/${contactId}`),
 
-  // POST solo acepta fullname, email, attributes (phone/company/etc. solo via PUT)
-  // Por eso hacemos POST + PUT encadenado si hay campos extra
-  createContact: async (projectId, { fullname, email, phone, company, note, streetAddress, tags, attributes }) => {
-    const created = await request(`/tiledesk/${projectId}/leads`, {
+  createContact: (_projectId, { fullname, name, email, phone, company, note, tags, attributes }) =>
+    request('/contacts', {
       method: 'POST',
-      body: JSON.stringify({ fullname, email, attributes: attributes || {} }),
-    })
-    const extras = {}
-    if (phone)         extras.phone         = phone
-    if (company)       extras.company       = company
-    if (note)          extras.note          = note
-    if (streetAddress) extras.streetAddress = streetAddress
-    if (tags?.length)  extras.tags          = tags
-    if (Object.keys(extras).length > 0) {
-      return request(`/tiledesk/${projectId}/leads/${created._id}`, {
-        method: 'PUT',
-        body: JSON.stringify(extras),
-      })
-    }
-    return created
-  },
-
-  // PUT acepta todos los campos top-level
-  updateContact: (projectId, contactId, payload) =>
-    request(`/tiledesk/${projectId}/leads/${contactId}`, {
-      method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ name: fullname || name, email, phone, company, note, tags, attributes }),
     }),
 
-  // Soft-delete (status=DELETED). Para borrado físico usar /physical (requiere owner).
-  deleteContact: (projectId, contactId) =>
-    request(`/tiledesk/${projectId}/leads/${contactId}`, { method: 'DELETE' }),
+  updateContact: (_projectId, contactId, payload) => {
+    const { fullname, ...rest } = payload
+    return request(`/contacts/${contactId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...rest, ...(fullname ? { name: fullname } : {}) }),
+    })
+  },
+
+  deleteContact: (_projectId, contactId) =>
+    request(`/contacts/${contactId}`, { method: 'DELETE' }),
 
   // ── Labels / Tags (almacenados en ARIA, aplicados a contactos via tags de Tiledesk) ──
   getLabels: (_projectId) => request('/labels'),
@@ -185,6 +166,8 @@ export const api = {
     }),
 
   // ── Agent Wizard ──────────────────────────────────────────────────────────
+  getAgentFlows: () => request('/agents/flows'),
+
   createAgentDraft: (payload) =>
     request('/agents/create-draft', { method: 'POST', body: JSON.stringify(payload) }),
 
@@ -201,6 +184,9 @@ export const api = {
     request(`/agents/${botId}/finalize`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   getAgentMetadata: () => request('/agents/metadata'),
+  quickCreateAgent: (payload) => request('/agents/quick-create', { method: 'POST', body: JSON.stringify(payload) }),
+  getDifyAgents: () => request('/agents/dify-list'),
+  deleteAgent: (botId) => request(`/agents/${botId}`, { method: 'DELETE' }),
   ensureKbNamespace: (botId, projectId) =>
     request(`/agents/${botId}/ensure-kb-namespace`, { method: 'POST', body: JSON.stringify({ projectId }) }),
 
@@ -254,6 +240,11 @@ export const api = {
   deleteScheduledMessage: (id) =>
     request(`/scheduled-messages/${id}`, { method: 'DELETE' }),
 
+  // ── HubSpot ───────────────────────────────────────────────────────────────
+  getHubspotConfig: () => request('/hubspot/config'),
+  saveHubspotConfig: (api_key) => request('/hubspot/config', { method: 'PUT', body: JSON.stringify({ api_key }) }),
+  syncHubspot: () => request('/hubspot/sync', { method: 'POST' }),
+
   // ── AI suggest ────────────────────────────────────────────────────────────
   aiSuggest: (messages, contactName) =>
     request('/ai/suggest', { method: 'POST', body: JSON.stringify({ messages, contactName }) }),
@@ -271,6 +262,10 @@ export const api = {
   // ── Tiledesk Knowledge Base (Copilot) ─────────────────────────────────────
   getKbNamespaces: (projectId) =>
     request(`/tiledesk/${projectId}/kb/namespace/all`),
+
+  listKbNamespaces: () => request('/kb/namespaces'),
+  setAgentKbNamespace: (botId, namespaceId) =>
+    request(`/agents/${botId}/kb-namespace`, { method: 'PUT', body: JSON.stringify({ namespaceId }) }),
   getKbContents: (projectId, namespaceId, type) => {
     const qs = new URLSearchParams({ namespace: namespaceId, direction: -1, sortField: 'updatedAt', limit: 100, ...(type ? { type } : {}) }).toString()
     return request(`/tiledesk/${projectId}/kb/?${qs}`)

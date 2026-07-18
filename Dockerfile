@@ -16,14 +16,13 @@ FROM node:20.9.0-alpine AS runtime
 
 WORKDIR /app
 
-# Instalar dependencias del servidor
-COPY server/package.json ./server/
-RUN cd server && npm install --omit=dev
-
 # Copiar servidor, flows y dist
 COPY server/ ./server/
 COPY flows/ ./flows/
 COPY --from=builder /app/dist ./dist
+
+# Instalar dependencias del servidor (después de COPY para invalidar cache cuando cambia package.json)
+RUN cd server && npm install --omit=dev
 
 EXPOSE 4000
 

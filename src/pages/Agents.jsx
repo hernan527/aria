@@ -9,7 +9,7 @@ import {
   Bot, Cpu, Activity, Plus, Trash2, ExternalLink,
   MoreVertical, Power, ScrollText, SlidersHorizontal,
   Paperclip, UserCheck, HelpCircle, Plane,
-  ShieldCheck, Car, PiggyBank, Zap, Play,
+  ShieldCheck, Car, PiggyBank, Zap, Play, Sparkles,
 } from 'lucide-react'
 
 const TEMPLATE_META = {
@@ -19,6 +19,56 @@ const TEMPLATE_META = {
   'broker':                { icon: ShieldCheck,color: '#a78bfa', label: 'Broker de Salud'       },
   'concesionaria-directa': { icon: Car,        color: '#f97316', label: 'Concesionaria'         },
   'concesionaria-plan':    { icon: PiggyBank,  color: '#ec4899', label: 'Plan Ahorro'           },
+}
+
+// ── Dify bot card ─────────────────────────────────────────────────────────────
+
+function DifyBotCard({ isActive, llmCfg, onToggleActive }) {
+  return (
+    <div className="card-sm flex flex-col gap-3 relative"
+      style={{ border: isActive ? '1px solid #6b7fff60' : undefined }}>
+      {/* Icono + nombre */}
+      <div className="flex items-center gap-3 pr-8">
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: 'linear-gradient(135deg,#6b7fff,#a78bfa)', boxShadow: '0 0 16px #6b7fff30' }}>
+          <Sparkles size={20} className="text-white" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-white truncate">ARIA Bot (Dify)</p>
+          <p className="text-xs text-white/35">Dify self-hosted</p>
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="grid grid-cols-2 gap-1.5">
+        <div className="px-2.5 py-1.5 rounded-lg bg-white/4 border border-white/6">
+          <p className="text-[10px] text-white/35 mb-0.5">Motor</p>
+          <p className="text-xs text-white/70 font-medium">Dify</p>
+        </div>
+        <div className="px-2.5 py-1.5 rounded-lg bg-white/4 border border-white/6">
+          <p className="text-[10px] text-white/35 mb-0.5">Handoff</p>
+          <p className="text-xs text-white/70 font-medium">Activado</p>
+        </div>
+      </div>
+
+      {/* Estado + acción */}
+      <div className="flex items-center justify-between">
+        <Badge variant={isActive ? 'success' : 'default'}>
+          {isActive ? 'Activo' : 'Inactivo'}
+        </Badge>
+        <button
+          onClick={() => onToggleActive('__dify__')}
+          className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg transition-colors ${
+            isActive
+              ? 'text-red-400 hover:text-red-300 hover:bg-red-500/8'
+              : 'text-aria-400 hover:text-aria-300 hover:bg-aria-500/8'
+          }`}>
+          <Power size={11} />
+          {isActive ? 'Desactivar' : 'Activar'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ── Bot card con menú tres puntos ─────────────────────────────────────────────
@@ -144,42 +194,41 @@ export default function Agents() {
   const { project } = useAuth()
   const projectId   = project?._id || project?.id
 
-  const [refreshKey,   setRefreshKey]   = useState(0)
-  const [activeBotId,  setActiveBotId]  = useState(null)
-  const [savingBot,    setSavingBot]    = useState(false)
+  const [refreshKey,  setRefreshKey]  = useState(0)
+  const [activeBotId, setActiveBotId] = useState(null)
+  const [savingBot,   setSavingBot]   = useState(false)
 
-  const { data: agents,   loading: loadingAgents } = useApi(() => api.getAgents(projectId),    [projectId])
-  const { data: bots,     loading: loadingBots   } = useApi(() => api.getBots(projectId),      [projectId, refreshKey])
-  const { data: metadata, loading: loadingMeta   } = useApi(() => api.getAgentMetadata(),      [refreshKey])
-  const { data: chSettings                       } = useApi(() => api.getChannelSettings(),    [refreshKey])
+  const { data: difyAgents, loading: loadingDify } = useApi(() => api.getDifyAgents(), [refreshKey])
+  const { data: metadata,   loading: loadingMeta  } = useApi(() => api.getAgentMetadata(), [refreshKey])
+  const { data: chSettings                        } = useApi(() => api.getChannelSettings(), [refreshKey])
 
-  // Sincronizar activeBotId desde settings
   useEffect(() => {
     if (chSettings?.default_bot_id !== undefined) {
       setActiveBotId(chSettings.default_bot_id || null)
     }
   }, [chSettings])
 
-  const loading   = loadingAgents || loadingBots || loadingMeta
-  const agentList = Array.isArray(agents)   ? agents   : []
-  const botList   = Array.isArray(bots)     ? bots     : []
-  const metaMap   = Array.isArray(metadata)
+  const loading  = loadingDify || loadingMeta
+  // dify_agents usa id; normalizar a _id para BotCard
+  const botList  = (Array.isArray(difyAgents) ? difyAgents : []).map(a => ({ ...a, _id: a.id }))
+  const metaMap  = Array.isArray(metadata)
     ? Object.fromEntries(metadata.map(m => [m.bot_id, m]))
     : {}
 
   async function handleSetActiveBot(botId) {
     setSavingBot(true)
     try {
-      await api.setActiveBotId(botId === activeBotId ? null : botId)
-      setActiveBotId(prev => prev === botId ? null : botId)
+      const next = botId === activeBotId ? null : botId
+      await api.setActiveBotId(next)
+      setActiveBotId(next)
     } catch {}
     setSavingBot(false)
   }
 
   const handleDelete = async (botId) => {
-    if (!confirm('¿Eliminar este agente IA de Tiledesk?')) return
+    if (!confirm('¿Eliminar este agente IA? Esta acción no se puede deshacer.')) return
     try {
-      await api.deleteBot(projectId, botId)
+      await api.deleteAgent(botId)
       setRefreshKey(k => k + 1)
     } catch (e) {
       alert('Error al eliminar: ' + e.message)
@@ -191,57 +240,29 @@ export default function Agents() {
       <div className="flex items-start justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white">Agentes</h1>
-          <p className="text-sm text-white/40 mt-0.5">Agentes humanos e IAs configurados en Tiledesk</p>
+          <p className="text-sm text-white/40 mt-0.5">Agentes IA creados en ARIA (powered by Dify)</p>
         </div>
-        <button onClick={() => navigate('/agents/new')}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-aria-500 hover:bg-aria-600 text-white text-sm font-medium transition-colors">
-          <Plus size={16} /> Nuevo Agente IA
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/agents/quick')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-medium transition-all"
+            style={{ background: 'linear-gradient(135deg,#6b7fff,#a78bfa)' }}>
+            <Sparkles size={16} /> Crear con IA
+          </button>
+          <button onClick={() => navigate('/agents/new')}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/8 hover:bg-white/12 text-white/70 hover:text-white text-sm font-medium transition-colors">
+            <Plus size={16} /> Wizard
+          </button>
+        </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-40"><Spinner /></div>
       ) : (
         <div className="grid gap-6">
-          {/* Agentes humanos */}
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Activity size={16} className="text-white/40" />
-              <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Agentes humanos</h2>
-              <Badge>{agentList.length}</Badge>
-            </div>
-            {agentList.length === 0 ? (
-              <p className="text-sm text-white/30 card">Sin agentes configurados</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {agentList.map(agent => {
-                  const u = agent.id_user || agent
-                  const name = u.firstname ? `${u.firstname} ${u.lastname || ''}`.trim() : u.email
-                  const online = agent.user_available ?? u.online
-                  return (
-                    <div key={agent._id} className="card-sm flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-aria-400 to-aria-600 flex items-center justify-center text-sm font-bold text-white shrink-0">
-                        {(name || 'A')[0].toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-white truncate">{name}</p>
-                        <p className="text-xs text-white/30 truncate">{u.email}</p>
-                      </div>
-                      <Badge variant={online ? 'success' : 'default'} className="ml-auto shrink-0">
-                        {online ? 'Online' : 'Off'}
-                      </Badge>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Bots IA */}
           <div>
             <div className="flex items-center gap-2 mb-4">
               <Cpu size={16} className="text-white/40" />
-              <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Bots / IA</h2>
+              <h2 className="text-sm font-semibold text-white/60 uppercase tracking-wider">Bots IA</h2>
               <Badge variant="primary">{botList.length}</Badge>
             </div>
 
@@ -253,7 +274,7 @@ export default function Agents() {
                   <p className="text-xs font-medium text-white/70">Bot activo en WhatsApp</p>
                   <p className="text-[11px] text-white/35">
                     {activeBotId
-                      ? `${botList.find(b => b._id === activeBotId)?.name || activeBotId} — responde automáticamente`
+                      ? (botList.find(b => b._id === activeBotId)?.name || activeBotId) + ' — responde automáticamente'
                       : 'Ninguno seleccionado — los mensajes no tienen respuesta automática'}
                   </p>
                 </div>
@@ -270,15 +291,16 @@ export default function Agents() {
                 </select>
               </div>
             )}
+
             {botList.length === 0 ? (
               <div className="card flex flex-col items-center justify-center py-12 gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center">
                   <Bot size={24} className="text-white/20" />
                 </div>
-                <p className="text-sm text-white/30">No hay bots configurados en Tiledesk</p>
+                <p className="text-sm text-white/30">No hay agentes IA creados</p>
                 <button onClick={() => navigate('/agents/new')}
                   className="flex items-center gap-1.5 text-xs text-aria-400 hover:text-aria-300 transition-colors">
-                  <Plus size={14} /> Crear primer agente IA
+                  <Plus size={14} /> Crear primer agente
                 </button>
               </div>
             ) : (

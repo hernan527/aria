@@ -6,8 +6,9 @@ import Database         from 'better-sqlite3'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { randomUUID }   from 'crypto'
-import { mkdirSync, readFileSync, writeFileSync, unlinkSync, existsSync } from 'fs'
+import { mkdirSync, readFileSync, writeFileSync, unlinkSync, existsSync, readdirSync } from 'fs'
 import { extname } from 'path'
+import nodemailer       from 'nodemailer'
 
 const app       = express()
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -19,6 +20,41 @@ const JWT_SECRET              = process.env.ARIA_JWT_SECRET || 'aria-secret-chan
 const TILEDESK_URL            = process.env.TILEDESK_INTERNAL_URL || 'http://tilrdefinitivo_server:3000'
 const TILEDESK_ADMIN_EMAIL    = process.env.TILEDESK_ADMIN_EMAIL || ''
 const TILEDESK_ADMIN_PASSWORD = process.env.TILEDESK_ADMIN_PASSWORD || ''
+
+// ── Mailer ────────────────────────────────────────────────────────────────────
+const smtpTransporter = process.env.SMTP_HOST ? nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: false,
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  tls: { rejectUnauthorized: false },
+}) : null
+
+async function sendInviteEmail(toEmail, inviteUrl, workspaceName) {
+  if (!smtpTransporter || !toEmail) return false
+  try {
+    await smtpTransporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to: toEmail,
+      subject: `Invitación a ${workspaceName || 'ARIA'}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0f0f23;color:#fff;border-radius:16px">
+          <h2 style="color:#818cf8;margin-bottom:8px">Fuiste invitado a ${workspaceName || 'ARIA'}</h2>
+          <p style="color:#94a3b8;margin-bottom:24px">Hacé click en el botón para crear tu cuenta y acceder a la plataforma.</p>
+          <a href="${inviteUrl}" style="display:inline-block;padding:12px 28px;background:#6366f1;color:#fff;border-radius:10px;text-decoration:none;font-weight:600">
+            Aceptar invitación
+          </a>
+          <p style="color:#475569;font-size:12px;margin-top:24px">O copiá este link: ${inviteUrl}</p>
+          <p style="color:#475569;font-size:12px">El link expira en 7 días.</p>
+        </div>
+      `,
+    })
+    return true
+  } catch (e) {
+    console.error('[Mailer] Error enviando invitación:', e.message)
+    return false
+  }
+}
 
 // ── DB ────────────────────────────────────────────────────────────────────────
 const DB_PATH = process.env.ARIA_DB_PATH || '/data/aria.db'
@@ -93,19 +129,22 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS agent_metadata (
-    bot_id           TEXT PRIMARY KEY,
-    workspace_id     TEXT NOT NULL,
-    tone             TEXT,
-    nationality      TEXT,
-    company_name     TEXT,
-    template_id      TEXT,
-    active           INTEGER DEFAULT 1,
-    instructions     TEXT,
-    temperature      REAL DEFAULT 1.0,
-    top_p            REAL DEFAULT 1.0,
-    channels         TEXT DEFAULT '["__all__"]',
-    derivation_users TEXT DEFAULT '["__all__"]',
-    updated_at       INTEGER DEFAULT (strftime('%s','now'))
+    bot_id              TEXT PRIMARY KEY,
+    workspace_id        TEXT NOT NULL,
+    tone                TEXT,
+    nationality         TEXT,
+    company_name        TEXT,
+    company_description TEXT,
+    derivation_notes    TEXT,
+    template_id         TEXT,
+    flow_file           TEXT,
+    active              INTEGER DEFAULT 1,
+    instructions        TEXT,
+    temperature         REAL DEFAULT 1.0,
+    top_p               REAL DEFAULT 1.0,
+    channels            TEXT DEFAULT '["__all__"]',
+    derivation_users    TEXT DEFAULT '["__all__"]',
+    updated_at          INTEGER DEFAULT (strftime('%s','now'))
   );
 
   CREATE TABLE IF NOT EXISTS agent_files (
@@ -119,13 +158,14 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS agent_kb (
-    id           TEXT PRIMARY KEY,
-    bot_id       TEXT NOT NULL,
-    workspace_id TEXT NOT NULL,
-    type         TEXT NOT NULL,
-    title        TEXT,
-    content      TEXT NOT NULL,
-    created_at   INTEGER DEFAULT (strftime('%s','now'))
+    id              TEXT PRIMARY KEY,
+    bot_id          TEXT NOT NULL,
+    workspace_id    TEXT NOT NULL,
+    type            TEXT NOT NULL,
+    title           TEXT,
+    content         TEXT NOT NULL,
+    tiledesk_kb_id  TEXT,
+    created_at      INTEGER DEFAULT (strftime('%s','now'))
   );
 
   CREATE TABLE IF NOT EXISTS wa_conversations (
@@ -197,10 +237,45 @@ db.exec(`
     color        TEXT NOT NULL DEFAULT '#6366f1',
     created_at   INTEGER DEFAULT (strftime('%s','now'))
   );
+
+  CREATE TABLE IF NOT EXISTS contacts (
+    id           TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    name         TEXT,
+    phone        TEXT,
+    email        TEXT,
+    company      TEXT,
+    note         TEXT,
+    tags         TEXT DEFAULT '[]',
+    attributes   TEXT DEFAULT '{}',
+    created_at   INTEGER DEFAULT (strftime('%s','now')),
+    updated_at   INTEGER DEFAULT (strftime('%s','now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS dify_agents (
+    id            TEXT PRIMARY KEY,
+    workspace_id  TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    description   TEXT,
+    system_prompt TEXT,
+    dify_app_id   TEXT,
+    dify_api_key  TEXT,
+    active        INTEGER DEFAULT 1,
+    created_at    INTEGER DEFAULT (strftime('%s','now'))
+  );
 `)
 
 // ── Migraciones de columnas ───────────────────────────────────────────────────
 ;(function migrateColumns() {
+  // Crear tabla contacts si no existe (el db.exec inicial puede fallar en DBs viejas)
+  db.exec(`CREATE TABLE IF NOT EXISTS contacts (
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, name TEXT, phone TEXT,
+    email TEXT, company TEXT, note TEXT, tags TEXT DEFAULT '[]',
+    attributes TEXT DEFAULT '{}',
+    created_at INTEGER DEFAULT (strftime('%s','now')),
+    updated_at INTEGER DEFAULT (strftime('%s','now'))
+  )`)
+
   const fsCols = db.prepare("PRAGMA table_info(funnel_stages)").all().map(c => c.name)
   if (!fsCols.includes('lead_status')) {
     db.exec(`ALTER TABLE funnel_stages ADD COLUMN lead_status TEXT NOT NULL DEFAULT 'open'`)
@@ -248,7 +323,83 @@ db.exec(`
     db.exec(`ALTER TABLE channel_settings ADD COLUMN llm_model TEXT DEFAULT 'gpt-4o-mini'`)
     console.log('✓ Migrado: channel_settings.llm_*')
   }
-})()
+  // agent_kb: columna tiledesk_kb_id
+  const akCols = db.prepare("PRAGMA table_info(agent_kb)").all().map(c => c.name)
+  if (!akCols.includes('tiledesk_kb_id')) {
+    db.exec(`ALTER TABLE agent_kb ADD COLUMN tiledesk_kb_id TEXT`)
+    console.log('✓ Migrado: agent_kb.tiledesk_kb_id')
+  }
+  // dify_agents: columnas extendidas para wizard
+  const daCols = db.prepare("PRAGMA table_info(dify_agents)").all().map(c => c.name)
+  if (!daCols.includes('template_id')) {
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN template_id TEXT`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN tone TEXT`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN nationality TEXT`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN company_name TEXT`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN company_description TEXT`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN derivation_notes TEXT`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN temperature REAL DEFAULT 0.7`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN top_p REAL DEFAULT 1.0`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN channels TEXT DEFAULT '["__all__"]'`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN derivation_users TEXT DEFAULT '["__all__"]'`)
+    console.log('✓ Migrado: dify_agents columnas extendidas')
+  }
+  if (!daCols.includes('dify_dataset_id')) {
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN dify_dataset_id TEXT`)
+    console.log('✓ Migrado: dify_agents.dify_dataset_id')
+  }
+  // agent_kb: columna dify_document_id
+  const akCols2 = db.prepare("PRAGMA table_info(agent_kb)").all().map(c => c.name)
+  if (!akCols2.includes('dify_document_id')) {
+    db.exec(`ALTER TABLE agent_kb ADD COLUMN dify_document_id TEXT`)
+    console.log('✓ Migrado: agent_kb.dify_document_id')
+  }
+  // agent_files: columna dify_document_id
+  const afCols = db.prepare("PRAGMA table_info(agent_files)").all().map(c => c.name)
+  if (!afCols.includes('dify_document_id')) {
+    db.exec(`ALTER TABLE agent_files ADD COLUMN dify_document_id TEXT`)
+    console.log('✓ Migrado: agent_files.dify_document_id')
+  }
+  // agent_metadata: columnas nuevas
+  const amCols2 = db.prepare("PRAGMA table_info(agent_metadata)").all().map(c => c.name)
+  if (!amCols2.includes('company_description')) {
+    db.exec(`ALTER TABLE agent_metadata ADD COLUMN company_description TEXT`)
+    db.exec(`ALTER TABLE agent_metadata ADD COLUMN derivation_notes TEXT`)
+    console.log('✓ Migrado: agent_metadata.company_description/derivation_notes')
+  }
+  if (!amCols2.includes('flow_file')) {
+    db.exec(`ALTER TABLE agent_metadata ADD COLUMN flow_file TEXT`)
+    console.log('✓ Migrado: agent_metadata.flow_file')
+  }
+  // wa_conversations: dify_conversation_id + bot_mode
+  const waCols = db.prepare("PRAGMA table_info(wa_conversations)").all().map(c => c.name)
+  if (!waCols.includes('dify_conversation_id')) {
+    db.exec(`ALTER TABLE wa_conversations ADD COLUMN dify_conversation_id TEXT`)
+    console.log('✓ Migrado: wa_conversations.dify_conversation_id')
+  }
+  if (!waCols.includes('bot_mode')) {
+    db.exec(`ALTER TABLE wa_conversations ADD COLUMN bot_mode TEXT DEFAULT 'bot'`)
+    console.log('✓ Migrado: wa_conversations.bot_mode')
+  }
+  // channel_instances: instance_token para EvolutionGo
+  const ciCols = db.prepare("PRAGMA table_info(channel_instances)").all().map(c => c.name)
+  if (!ciCols.includes('instance_token')) {
+    db.exec(`ALTER TABLE channel_instances ADD COLUMN instance_token TEXT`)
+    console.log('✓ Migrado: channel_instances.instance_token')
+  }
+  // channel_settings: hubspot_api_key
+  const csCols2 = db.prepare("PRAGMA table_info(channel_settings)").all().map(c => c.name)
+  if (!csCols2.includes('hubspot_api_key')) {
+    db.exec(`ALTER TABLE channel_settings ADD COLUMN hubspot_api_key TEXT`)
+    console.log('✓ Migrado: channel_settings.hubspot_api_key')
+  }
+  // contacts: hubspot_contact_id
+  const contactCols = db.prepare("PRAGMA table_info(contacts)").all().map(c => c.name)
+  if (!contactCols.includes('hubspot_contact_id')) {
+    db.exec(`ALTER TABLE contacts ADD COLUMN hubspot_contact_id TEXT`)
+    console.log('✓ Migrado: contacts.hubspot_contact_id')
+  }
+})();
 
 // ── Migración: usuarios viejos sin workspace_id ───────────────────────────────
 // Si la tabla users tiene columnas viejas (tiledesk_project_id), las migramos.
@@ -276,7 +427,7 @@ if (cols.includes('tiledesk_project_id') && !cols.includes('workspace_id')) {
 }
 
 // ── LLM helper — lee config del workspace (DB) con fallback a env vars ────────
-async function callLLM({ system, messages, max_tokens = 1024, workspaceId }) {
+async function callLLM({ system, messages, max_tokens = 1024, workspaceId, difyConversationId }) {
   // Config del workspace (DB) tiene prioridad sobre env vars
   let provider = null, apiKey = null, model = null
   if (workspaceId) {
@@ -284,7 +435,7 @@ async function callLLM({ system, messages, max_tokens = 1024, workspaceId }) {
     if (cs?.llm_api_key) {
       provider = cs.llm_provider || 'openai'
       apiKey   = cs.llm_api_key
-      model    = cs.llm_model || (provider === 'anthropic' ? 'claude-haiku-4-5-20251001' : 'gpt-4o-mini')
+      model    = cs.llm_model || (provider === 'anthropic' ? 'claude-haiku-4-5-20251001' : provider === 'dify' ? 'dify' : 'gpt-4o-mini')
     }
   }
   // Fallback a env vars
@@ -293,6 +444,30 @@ async function callLLM({ system, messages, max_tokens = 1024, workspaceId }) {
     else if (process.env.ANTHROPIC_API_KEY) { provider = 'anthropic'; apiKey = process.env.ANTHROPIC_API_KEY; model = model || 'claude-haiku-4-5-20251001' }
   }
   if (!apiKey) throw new Error('No hay API key de LLM configurada')
+
+  if (provider === 'dify') {
+    const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+    const r = await fetch(`${difyUrl}/v1/chat-messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        inputs: {},
+        query: lastUserMsg,
+        response_mode: 'blocking',
+        conversation_id: difyConversationId || '',
+        user: workspaceId || 'aria',
+      }),
+    })
+    const d = await r.json()
+    if (d.code || d.status === 400) throw new Error(d.message || JSON.stringify(d))
+    return {
+      text: d.answer?.trim() || '',
+      model: 'dify',
+      usage: { input_tokens: d.metadata?.usage?.prompt_tokens || 0, output_tokens: d.metadata?.usage?.completion_tokens || 0 },
+      difyConversationId: d.conversation_id,
+    }
+  }
 
   if (provider === 'anthropic') {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -361,7 +536,8 @@ async function getTiledeskToken() {
   console.log('✓ Tiledesk token renovado, userId:', tiledeskUserId)
   return tiledeskToken
 }
-getTiledeskToken().catch(e => console.error('⚠ No se pudo conectar a Tiledesk:', e.message))
+// Tiledesk deshabilitado — solo se conecta si hay rutas legacy que lo usan
+// getTiledeskToken().catch(e => console.error('⚠ No se pudo conectar a Tiledesk:', e.message))
 
 // ── Helpers Tiledesk ──────────────────────────────────────────────────────────
 async function tdFetch(path, opts = {}) {
@@ -592,7 +768,7 @@ app.put('/api/llm/config', requireAriaAuth, (req, res) => {
 
 // ── Invitaciones ──────────────────────────────────────────────────────────────
 // Solo owners/admins pueden invitar
-app.post('/api/workspace/invite', requireAriaAuth, (req, res) => {
+app.post('/api/workspace/invite', requireAriaAuth, async (req, res) => {
   if (!['owner', 'admin'].includes(req.ariaUser.role)) {
     return res.status(403).json({ error: 'Solo los administradores pueden invitar miembros' })
   }
@@ -604,14 +780,22 @@ app.post('/api/workspace/invite', requireAriaAuth, (req, res) => {
     .run(randomUUID(), req.ariaUser.workspaceId, email || null, token, expires)
 
   const publicUrl = process.env.ARIA_PUBLIC_URL || 'https://aria.saludok.com.ar'
+  const inviteUrl = `${publicUrl}/register?invite=${token}`
+
+  // Enviar email si hay dirección y SMTP configurado
+  const ws = db.prepare('SELECT name FROM workspaces WHERE id=?').get(req.ariaUser.workspaceId)
+  let emailSent = false
+  if (email) emailSent = await sendInviteEmail(email, inviteUrl, ws?.name)
+
   res.json({
     invite_token: token,
-    invite_url: `${publicUrl}/register?invite=${token}`,
+    invite_url: inviteUrl,
     expires_in: '7 días',
     email: email || null,
     name: name || null,
     role: role || 'member',
     permissions: permissions || null,
+    email_sent: emailSent,
   })
 })
 
@@ -648,6 +832,39 @@ app.delete('/api/workspace/teams/:id', requireAriaAuth, (req, res) => {
   db.prepare('DELETE FROM team_members WHERE team_id=?').run(req.params.id)
   db.prepare('DELETE FROM teams WHERE id=? AND workspace_id=?').run(req.params.id, req.ariaUser.workspaceId)
   res.json({ ok: true })
+})
+
+// Aceptar invite desde la página AcceptInvite (no requiere email — lo tenemos en el invite)
+app.post('/api/auth/register-invite', async (req, res) => {
+  const { token, name, password } = req.body || {}
+  if (!token || !name || !password) return res.status(400).json({ error: 'Datos incompletos' })
+  if (password.length < 6) return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' })
+
+  const invite = db.prepare('SELECT * FROM invites WHERE token=? AND used=0 AND expires_at>?')
+    .get(token, Math.floor(Date.now() / 1000))
+  if (!invite) return res.status(400).json({ error: 'Invitación inválida o expirada' })
+
+  // Email: usar el del invite si existe, sino generar uno temporal
+  const email = invite.email || `usuario_${randomUUID().slice(0,8)}@aria.local`
+  const existing = db.prepare('SELECT id FROM users WHERE email=?').get(email)
+  if (existing) return res.status(400).json({ error: 'Esta invitación ya fue usada' })
+
+  try {
+    const hash = await bcrypt.hash(password, 10)
+    const userId = randomUUID()
+    db.prepare('INSERT INTO users (id,email,password_hash,name,workspace_id,role) VALUES (?,?,?,?,?,?)')
+      .run(userId, email, hash, name.trim(), invite.workspace_id, 'member')
+    db.prepare('UPDATE invites SET used=1 WHERE token=?').run(token)
+
+    const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(invite.workspace_id)
+    const user = { email, name: name.trim(), role: 'member' }
+    res.json({
+      token: makeToken(user, workspace),
+      user: { email, name: name.trim(), role: 'member', projectId: workspace?.tiledesk_project_id },
+    })
+  } catch (e) {
+    res.status(500).json({ error: e.message })
+  }
 })
 
 // Verificar invite antes de registrar
@@ -725,6 +942,218 @@ app.delete('/api/labels/:id', requireAriaAuth, (req, res) => {
   db.prepare('DELETE FROM labels WHERE id=? AND workspace_id=?').run(req.params.id, req.ariaUser.workspaceId)
   res.json({ ok: true })
 })
+
+// ── Contactos (ARIA DB) ───────────────────────────────────────────────────────
+app.get('/api/contacts', requireAriaAuth, (req, res) => {
+  const wsId = req.ariaUser.workspaceId
+  const { q, phone, label, limit = 200 } = req.query
+  let sql = 'SELECT * FROM contacts WHERE workspace_id=?'
+  const params = [wsId]
+  if (q)     { sql += ' AND (name LIKE ? OR phone LIKE ? OR email LIKE ? OR company LIKE ?)'; const p = `%${q}%`; params.push(p,p,p,p) }
+  if (phone) { sql += ' AND phone=?'; params.push(phone) }
+  if (label) { sql += ' AND tags LIKE ?'; params.push(`%"${label}"%`) }
+  sql += ' ORDER BY updated_at DESC LIMIT ?'
+  params.push(Number(limit))
+  const rows = db.prepare(sql).all(...params)
+  res.json(rows.map(r => ({ ...r, tags: JSON.parse(r.tags || '[]'), attributes: JSON.parse(r.attributes || '{}') })))
+})
+
+app.post('/api/contacts', requireAriaAuth, (req, res) => {
+  const wsId = req.ariaUser.workspaceId
+  const { name, phone, email, company, note, tags = [], attributes = {} } = req.body || {}
+  // Upsert por teléfono si ya existe
+  if (phone) {
+    const existing = db.prepare('SELECT * FROM contacts WHERE workspace_id=? AND phone=?').get(wsId, phone)
+    if (existing) {
+      db.prepare("UPDATE contacts SET name=COALESCE(?,name), email=COALESCE(?,email), company=COALESCE(?,company), updated_at=strftime('%s','now') WHERE id=?")
+        .run(name||null, email||null, company||null, existing.id)
+      return res.json({ ...existing, _id: existing.id })
+    }
+  }
+  const id = randomUUID()
+  db.prepare('INSERT INTO contacts (id,workspace_id,name,phone,email,company,note,tags,attributes) VALUES (?,?,?,?,?,?,?,?,?)')
+    .run(id, wsId, name||null, phone||null, email||null, company||null, note||null, JSON.stringify(tags), JSON.stringify(attributes))
+  const row = db.prepare('SELECT * FROM contacts WHERE id=?').get(id)
+  res.json({ ...row, _id: id, tags: JSON.parse(row.tags||'[]'), attributes: JSON.parse(row.attributes||'{}') })
+})
+
+app.get('/api/contacts/:id', requireAriaAuth, (req, res) => {
+  const row = db.prepare('SELECT * FROM contacts WHERE id=? AND workspace_id=?').get(req.params.id, req.ariaUser.workspaceId)
+  if (!row) return res.status(404).json({ error: 'No encontrado' })
+  res.json({ ...row, _id: row.id, tags: JSON.parse(row.tags||'[]'), attributes: JSON.parse(row.attributes||'{}') })
+})
+
+app.put('/api/contacts/:id', requireAriaAuth, (req, res) => {
+  const wsId = req.ariaUser.workspaceId
+  const row = db.prepare('SELECT * FROM contacts WHERE id=? AND workspace_id=?').get(req.params.id, wsId)
+  if (!row) return res.status(404).json({ error: 'No encontrado' })
+  const { name, phone, email, company, note, tags, attributes } = req.body || {}
+  db.prepare("UPDATE contacts SET name=?,phone=?,email=?,company=?,note=?,tags=?,attributes=?,updated_at=strftime('%s','now') WHERE id=?")
+    .run(
+      name ?? row.name, phone ?? row.phone, email ?? row.email,
+      company ?? row.company, note ?? row.note,
+      tags !== undefined ? JSON.stringify(tags) : row.tags,
+      attributes !== undefined ? JSON.stringify(attributes) : row.attributes,
+      req.params.id
+    )
+  const updated = db.prepare('SELECT * FROM contacts WHERE id=?').get(req.params.id)
+  res.json({ ...updated, _id: updated.id, tags: JSON.parse(updated.tags||'[]'), attributes: JSON.parse(updated.attributes||'{}') })
+})
+
+app.delete('/api/contacts/:id', requireAriaAuth, (req, res) => {
+  db.prepare('DELETE FROM contacts WHERE id=? AND workspace_id=?').run(req.params.id, req.ariaUser.workspaceId)
+  res.json({ ok: true })
+})
+
+app.get('/api/contacts/:id/conversations', requireAriaAuth, (req, res) => {
+  const wsId = req.ariaUser.workspaceId
+  const contact = db.prepare('SELECT phone FROM contacts WHERE id=? AND workspace_id=?').get(req.params.id, wsId)
+  if (!contact?.phone) return res.json([])
+  const convs = db.prepare(
+    'SELECT * FROM wa_conversations WHERE workspace_id=? AND (wa_from=? OR wa_from LIKE ?) ORDER BY updated_at DESC LIMIT 20'
+  ).all(wsId, contact.phone, `${contact.phone}@%`)
+  res.json(convs)
+})
+
+// ── HubSpot integration ───────────────────────────────────────────────────────
+
+async function syncContactToHubSpot(workspaceId, contactRow) {
+  const cs = db.prepare('SELECT hubspot_api_key FROM channel_settings WHERE workspace_id=?').get(workspaceId)
+  if (!cs?.hubspot_api_key) return null
+
+  const { id: ariaId, name, phone, email, company } = contactRow
+  const attrs = JSON.parse(contactRow.attributes || '{}')
+  const isLid = attrs.jid_type === 'lid'
+
+  const token = cs.hubspot_api_key
+  const hdrs = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+
+  const nameParts = (name || '').trim().split(' ')
+  const properties = {}
+  // Nombre: usar pushName si existe, sino "WhatsApp Contact"
+  if (nameParts[0]) properties.firstname = nameParts[0]
+  else properties.firstname = 'WhatsApp'
+  if (nameParts.length > 1) properties.lastname = nameParts.slice(1).join(' ')
+  // Teléfono: usar si es número real (jid_type real o lid_resolved)
+  const isUnresolvedLid = attrs.jid_type === 'lid'
+  if (phone && !isUnresolvedLid) properties.phone = `+${phone}`
+  if (email)   properties.email   = email
+  if (company) properties.company = company
+
+  try {
+    const existing = db.prepare('SELECT hubspot_contact_id FROM contacts WHERE id=?').get(ariaId)
+    if (existing?.hubspot_contact_id) {
+      await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${existing.hubspot_contact_id}`,
+        { method: 'PATCH', headers: hdrs, body: JSON.stringify({ properties }) })
+      return existing.hubspot_contact_id
+    }
+
+    // Buscar por teléfono en HubSpot antes de crear
+    if (phone) {
+      const sr = await fetch('https://api.hubapi.com/crm/v3/objects/contacts/search', {
+        method: 'POST', headers: hdrs,
+        body: JSON.stringify({ filterGroups: [{ filters: [{ propertyName: 'phone', operator: 'EQ', value: phone }] }], limit: 1 })
+      })
+      const sd = await sr.json()
+      if (sd.results?.length > 0) {
+        const hsId = sd.results[0].id
+        db.prepare('UPDATE contacts SET hubspot_contact_id=? WHERE id=?').run(hsId, ariaId)
+        await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${hsId}`,
+          { method: 'PATCH', headers: hdrs, body: JSON.stringify({ properties }) })
+        return hsId
+      }
+    }
+
+    // Crear nuevo contacto en HubSpot
+    const cr = await fetch('https://api.hubapi.com/crm/v3/objects/contacts',
+      { method: 'POST', headers: hdrs, body: JSON.stringify({ properties }) })
+    const cd = await cr.json()
+    if (cd.id) {
+      db.prepare('UPDATE contacts SET hubspot_contact_id=? WHERE id=?').run(cd.id, ariaId)
+      return cd.id
+    }
+  } catch (e) {
+    console.error('[HubSpot] sync contact error:', e.message)
+  }
+  return null
+}
+
+async function createHubSpotDeal(workspaceId, hsContactId, contactName, phone) {
+  const cs = db.prepare('SELECT hubspot_api_key FROM channel_settings WHERE workspace_id=?').get(workspaceId)
+  if (!cs?.hubspot_api_key || !hsContactId) return
+
+  const token = cs.hubspot_api_key
+  const hdrs = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+
+  try {
+    const dealRes = await fetch('https://api.hubapi.com/crm/v3/objects/deals', {
+      method: 'POST', headers: hdrs,
+      body: JSON.stringify({ properties: {
+        dealname: `WhatsApp — ${contactName || (phone ? `+${phone}` : 'Nuevo contacto')}`,
+        dealstage: 'appointmentscheduled',
+        pipeline: 'default'
+      }})
+    })
+    const dealData = await dealRes.json()
+    if (!dealData.id) return
+
+    // Asociar deal con contacto (API v4)
+    await fetch(`https://api.hubapi.com/crm/v4/objects/deals/${dealData.id}/associations/contacts/${hsContactId}`, {
+      method: 'PUT', headers: hdrs,
+      body: JSON.stringify([{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }])
+    })
+  } catch (e) {
+    console.error('[HubSpot] create deal error:', e.message)
+  }
+}
+
+// Helper: upsert contacto desde mensaje WA entrante
+// rawJid: JID completo (ej: 5491164840888@s.whatsapp.net, 161534323998914@lid, etc.)
+// realPhone: número real extraído de SenderAlt cuando rawJid es @lid
+function upsertContactFromWA(workspaceId, rawJid, pushName, realPhone) {
+  if (!rawJid) return
+  // Ignorar grupos, newsletters y broadcasts
+  if (rawJid.endsWith('@g.us') || rawJid.endsWith('@newsletter') || rawJid === 'status@broadcast') return
+  // Detectar si es LID (identificador de privacidad, no es teléfono real)
+  const isLid = rawJid.toLowerCase().endsWith('@lid')
+  // Usar número real si viene, sino usar el identificador del JID
+  const lidId = rawJid.replace(/@(s\.whatsapp\.net|c\.us|lid)$/i, '')
+  if (!lidId || !/^\d+$/.test(lidId)) return
+  // phone = número real siempre que esté disponible
+  const phone = (isLid && realPhone && /^\d+$/.test(realPhone)) ? realPhone : lidId
+  const attrs = JSON.stringify({ jid_type: isLid ? (realPhone ? 'lid_resolved' : 'lid') : 'real', lid: isLid ? lidId : null })
+  // Nombre: solo si es texto real, no un número
+  const cleanName = (pushName && !/^\d+$/.test(pushName) && pushName !== phone) ? pushName.trim() : null
+
+  // Buscar por teléfono real o por LID (para no duplicar)
+  let existing = db.prepare('SELECT id, name FROM contacts WHERE workspace_id=? AND phone=?').get(workspaceId, phone)
+  // Si no encontró por phone real, buscar por LID como fallback
+  if (!existing && isLid && realPhone) {
+    existing = db.prepare('SELECT id, name FROM contacts WHERE workspace_id=? AND phone=?').get(workspaceId, lidId)
+    if (existing) {
+      // Actualizar el LID por el número real
+      db.prepare("UPDATE contacts SET phone=?, attributes=?, updated_at=strftime('%s','now') WHERE id=?")
+        .run(phone, attrs, existing.id)
+    }
+  }
+
+  if (existing) {
+    if (!existing.name && cleanName)
+      db.prepare("UPDATE contacts SET name=?, updated_at=strftime('%s','now') WHERE id=?").run(cleanName, existing.id)
+    const row = db.prepare('SELECT * FROM contacts WHERE id=?').get(existing.id)
+    if (row) syncContactToHubSpot(workspaceId, row).catch(() => {})
+    return existing.id
+  }
+  const id = randomUUID()
+  db.prepare('INSERT INTO contacts (id,workspace_id,name,phone,tags,attributes) VALUES (?,?,?,?,?,?)')
+    .run(id, workspaceId, cleanName, phone, '[]', attrs)
+  // Nuevo contacto: sincronizar a HubSpot y crear Deal
+  const newRow = db.prepare('SELECT * FROM contacts WHERE id=?').get(id)
+  syncContactToHubSpot(workspaceId, newRow)
+    .then(hsId => { if (hsId) createHubSpotDeal(workspaceId, hsId, cleanName, phone) })
+    .catch(() => {})
+  return id
+}
 
 // ── Funnels (pipelines) ───────────────────────────────────────────────────────
 const DEFAULT_STAGES_JSON = JSON.stringify([
@@ -856,20 +1285,69 @@ app.put('/api/channels/settings', requireAriaAuth, (req, res) => {
 })
 
 // Seleccionar bot activo del workspace + registrar webhook en Tiledesk
-app.put('/api/channels/settings/bot', requireAriaAuth, async (req, res) => {
+app.put('/api/channels/settings/bot', requireAriaAuth, (req, res) => {
   const { default_bot_id } = req.body || {}
+  const workspaceId = req.ariaUser.workspaceId
+
+  // Si es un agente Dify, actualizar también la config LLM con su API key
+  if (default_bot_id && default_bot_id !== '__dify__') {
+    const difyAgent = db.prepare('SELECT dify_api_key FROM dify_agents WHERE id=? AND workspace_id=?').get(default_bot_id, workspaceId)
+    if (difyAgent?.dify_api_key) {
+      db.prepare(`
+        INSERT INTO channel_settings (workspace_id, default_bot_id, llm_provider, llm_api_key, llm_model, updated_at)
+        VALUES (?, ?, 'dify', ?, 'dify', strftime('%s','now'))
+        ON CONFLICT(workspace_id) DO UPDATE SET
+          default_bot_id=excluded.default_bot_id,
+          llm_provider='dify', llm_api_key=excluded.llm_api_key, llm_model='dify',
+          updated_at=excluded.updated_at
+      `).run(workspaceId, default_bot_id, difyAgent.dify_api_key)
+      return res.json({ ok: true })
+    }
+  }
+
   db.prepare(`
     INSERT INTO channel_settings (workspace_id, default_bot_id, updated_at)
     VALUES (?, ?, strftime('%s','now'))
     ON CONFLICT(workspace_id) DO UPDATE SET default_bot_id=excluded.default_bot_id, updated_at=excluded.updated_at
-  `).run(req.ariaUser.workspaceId, default_bot_id || null)
-
-  // Registrar webhook en Tiledesk si hay bot activo
-  if (default_bot_id) {
-    const ws = db.prepare('SELECT * FROM workspaces WHERE id=?').get(req.ariaUser.workspaceId)
-    if (ws?.tiledesk_project_id) registerTiledeskWebhook(ws.tiledesk_project_id).catch(() => {})
-  }
+  `).run(workspaceId, default_bot_id || null)
   res.json({ ok: true })
+})
+
+// ── HubSpot — config ─────────────────────────────────────────────────────────
+app.get('/api/hubspot/config', requireAriaAuth, (req, res) => {
+  const cs = db.prepare('SELECT hubspot_api_key FROM channel_settings WHERE workspace_id=?').get(req.ariaUser.workspaceId)
+  const key = cs?.hubspot_api_key
+  res.json({ configured: !!key, api_key: key ? `${key.slice(0, 16)}...` : null })
+})
+
+app.put('/api/hubspot/config', requireAriaAuth, (req, res) => {
+  const wsId = req.ariaUser.workspaceId
+  const { api_key } = req.body || {}
+  db.prepare(`
+    INSERT INTO channel_settings (workspace_id, hubspot_api_key, updated_at)
+    VALUES (?, ?, strftime('%s','now'))
+    ON CONFLICT(workspace_id) DO UPDATE SET hubspot_api_key=excluded.hubspot_api_key, updated_at=excluded.updated_at
+  `).run(wsId, api_key || null)
+  res.json({ ok: true })
+})
+
+// Sincronizar manualmente todos los contactos a HubSpot
+app.post('/api/hubspot/sync', requireAriaAuth, async (req, res) => {
+  const wsId = req.ariaUser.workspaceId
+  const cs = db.prepare('SELECT hubspot_api_key FROM channel_settings WHERE workspace_id=?').get(wsId)
+  if (!cs?.hubspot_api_key) return res.status(400).json({ error: 'HubSpot no configurado' })
+
+  const contacts = db.prepare('SELECT * FROM contacts WHERE workspace_id=?').all(wsId)
+  res.json({ queued: contacts.length })
+
+  // Procesar en background (no bloquear respuesta)
+  ;(async () => {
+    for (const row of contacts) {
+      await syncContactToHubSpot(wsId, row).catch(() => {})
+      await new Promise(r => setTimeout(r, 200)) // rate limit
+    }
+    console.log(`[HubSpot] sync completo: ${contacts.length} contactos`)
+  })()
 })
 
 // ── Canales — instancias ──────────────────────────────────────────────────────
@@ -891,11 +1369,17 @@ app.get('/api/channels/instances', requireAriaAuth, async (req, res) => {
         // Sesión no existe en WAHA — marcar como desconectada en lugar de mostrar status viejo
         return { ...inst, status: 'disconnected' }
       } else if (inst.provider === 'evolution') {
-        const r = await fetch(`${settings.evo_url}/instance/connectionState/${inst.instance_name}`,
-          { headers: { 'apikey': settings.evo_key || '' } })
+        if (!inst.instance_token) return { ...inst, status: 'disconnected' }
+        const evoUrl = settings.evo_url || process.env.EVO_URL || ''
+        const r = await fetch(`${evoUrl}/instance/status`, {
+          headers: { 'apikey': inst.instance_token }
+        })
         if (r.ok) {
           const d = await r.json()
-          return { ...inst, status: d.instance?.state || d.state || inst.status }
+          const connected = d.data?.Connected
+          const loggedIn  = d.data?.LoggedIn
+          const status = (connected && loggedIn) ? 'WORKING' : connected ? 'STARTING' : 'disconnected'
+          return { ...inst, status }
         }
         return { ...inst, status: 'disconnected' }
       }
@@ -915,7 +1399,7 @@ app.post('/api/channels/instances', requireAriaAuth, async (req, res) => {
   try {
     if (provider === 'waha') {
       if (!settings.waha_url) return res.status(400).json({ error: 'WAHA URL no configurada' })
-      const sessionName = `aria_${instance_name}_${wsId.slice(0,8)}`
+      const sessionName = 'default'
       const r = await fetch(`${settings.waha_url}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Api-Key': settings.waha_key || '' },
@@ -940,18 +1424,33 @@ app.post('/api/channels/instances', requireAriaAuth, async (req, res) => {
       return res.json({ id, instance_name, session_name: sessionName, provider: 'waha', status: 'STARTING' })
 
     } else if (provider === 'evolution') {
-      if (!settings.evo_url) return res.status(400).json({ error: 'Evolution URL no configurada' })
-      const r = await fetch(`${settings.evo_url}/instance/create`, {
+      const evoUrl = settings.evo_url || process.env.EVO_URL || ''
+      const evoKey = settings.evo_key || process.env.EVO_KEY || ''
+      if (!evoUrl) return res.status(400).json({ error: 'EvolutionGo URL no configurada' })
+      const instanceToken = randomUUID().replace(/-/g, '')
+      // 1. Crear instancia
+      const createR = await fetch(`${evoUrl}/instance/create`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': settings.evo_key || '' },
-        body: JSON.stringify({ instanceName: instance_name, qrcode: true, integration: 'WHATSAPP-BAILEYS' }),
+        headers: { 'Content-Type': 'application/json', 'apikey': evoKey },
+        body: JSON.stringify({ name: instance_name, token: instanceToken }),
       })
-      const body = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(body.message || `Evolution error ${r.status}`)
-      db.prepare('INSERT OR REPLACE INTO channel_instances (id,workspace_id,provider,instance_name,status) VALUES (?,?,?,?,?)')
-        .run(id, wsId, 'evolution', instance_name, 'connecting')
-      return res.json({ id, instance_name, provider: 'evolution', status: 'connecting',
-        qrcode: body.qrcode })
+      const createBody = await createR.json().catch(() => ({}))
+      if (!createR.ok) throw new Error(createBody.message || createBody.error || `EvolutionGo error ${createR.status}`)
+      // 2. Conectar (configura webhook + inicia QR)
+      const webhookUrl = `${process.env.ARIA_PUBLIC_URL || 'https://aria.saludok.com.ar'}/webhook/evogo`
+      await fetch(`${evoUrl}/instance/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': instanceToken },
+        body: JSON.stringify({
+          webhookUrl,
+          subscribe: ['Messages', 'Connection'],
+          ignoreGroups: true,
+          ignoreStatus: true,
+        }),
+      }).catch(() => {})
+      db.prepare('INSERT OR REPLACE INTO channel_instances (id,workspace_id,provider,instance_name,session_name,status,instance_token) VALUES (?,?,?,?,?,?,?)')
+        .run(id, wsId, 'evolution', instance_name, instance_name, 'STARTING', instanceToken)
+      return res.json({ id, instance_name, provider: 'evolution', status: 'STARTING' })
 
     } else if (provider === 'uzapi') {
       if (!settings.uzapi_url) return res.status(400).json({ error: 'UZAPI URL no configurada' })
@@ -1005,10 +1504,22 @@ app.get('/api/channels/instances/:id/qr', requireAriaAuth, async (req, res) => {
       return res.json({ status: st.status || 'STARTING', qrcode: null })
 
     } else if (inst.provider === 'evolution') {
-      const r = await fetch(`${settings.evo_url}/instance/connect/${inst.instance_name}`,
-        { headers: { 'apikey': settings.evo_key || '' } })
-      const d = await r.json().catch(() => ({}))
-      return res.json({ qrcode: d.base64 ? `data:image/png;base64,${d.base64.replace(/^data:image\/png;base64,/,'')}` : null, status: d.state || 'connecting' })
+      if (!inst.instance_token) return res.json({ status: 'disconnected', qrcode: null })
+      const evoUrl = settings.evo_url || process.env.EVO_URL || ''
+      // Check status first
+      const stR = await fetch(`${evoUrl}/instance/status`, { headers: { 'apikey': inst.instance_token } })
+      if (stR.ok) {
+        const st = await stR.json().catch(() => ({}))
+        if (st.data?.Connected && st.data?.LoggedIn) return res.json({ status: 'WORKING', qrcode: null })
+      }
+      // Get QR — formato: { data: { Qrcode: "data:image/png;base64,..." } }
+      const qrR = await fetch(`${evoUrl}/instance/qr`, { headers: { 'apikey': inst.instance_token } })
+      const qrD = await qrR.json().catch(() => ({}))
+      const qrImg = qrD.data?.Qrcode || qrD.base64 || ''
+      if (qrImg) {
+        return res.json({ qrcode: qrImg.startsWith('data:') ? qrImg : `data:image/png;base64,${qrImg}`, status: 'SCAN_QR_CODE' })
+      }
+      return res.json({ status: 'STARTING', qrcode: null })
     }
     res.json({ status: 'unknown' })
   } catch (e) {
@@ -1049,6 +1560,22 @@ app.post('/api/channels/instances/:id/restart', requireAriaAuth, async (req, res
       }
       db.prepare("UPDATE channel_instances SET status='STARTING' WHERE id=?").run(inst.id)
       return res.json({ ok: true, status: 'STARTING' })
+    } else if (inst.provider === 'evolution') {
+      if (!inst.instance_token) return res.status(400).json({ error: 'Sin token de instancia' })
+      const evoUrl = settings.evo_url || process.env.EVO_URL || ''
+      const webhookUrl = `${process.env.ARIA_PUBLIC_URL || 'https://aria.saludok.com.ar'}/webhook/evogo`
+      await fetch(`${evoUrl}/instance/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': inst.instance_token },
+        body: JSON.stringify({
+          webhookUrl,
+          subscribe: ['Messages', 'Connection'],
+          ignoreGroups: true,
+          ignoreStatus: true,
+        }),
+      }).catch(() => {})
+      db.prepare("UPDATE channel_instances SET status='STARTING' WHERE id=?").run(inst.id)
+      return res.json({ ok: true, status: 'STARTING' })
     }
     res.status(400).json({ error: 'Restart no soportado para este provider' })
   } catch (e) {
@@ -1067,8 +1594,12 @@ app.delete('/api/channels/instances/:id', requireAriaAuth, async (req, res) => {
       await fetch(`${settings.waha_url}/api/sessions/${inst.session_name}`,
         { method: 'DELETE', headers: { 'X-Api-Key': settings.waha_key || '' } }).catch(() => {})
     } else if (inst.provider === 'evolution') {
-      await fetch(`${settings.evo_url}/instance/delete/${inst.instance_name}`,
-        { method: 'DELETE', headers: { 'apikey': settings.evo_key || '' } }).catch(() => {})
+      const evoUrl = settings.evo_url || process.env.EVO_URL || ''
+      const evoKey = settings.evo_key || process.env.EVO_KEY || ''
+      await fetch(`${evoUrl}/instance/delete`, {
+        method: 'DELETE',
+        headers: { 'apikey': evoKey },
+      }).catch(() => {})
     }
   } catch {}
 
@@ -1086,8 +1617,13 @@ app.post('/api/channels/instances/:id/logout', requireAriaAuth, async (req, res)
       await fetch(`${settings.waha_url}/api/sessions/${inst.session_name}/logout`,
         { method: 'POST', headers: { 'X-Api-Key': settings.waha_key || '' } })
     } else if (inst.provider === 'evolution') {
-      await fetch(`${settings.evo_url}/instance/logout/${inst.instance_name}`,
-        { method: 'DELETE', headers: { 'apikey': settings.evo_key || '' } })
+      const evoUrl = settings.evo_url || process.env.EVO_URL || ''
+      if (inst.instance_token) {
+        await fetch(`${evoUrl}/instance/logout`, {
+          method: 'POST',
+          headers: { 'apikey': inst.instance_token },
+        }).catch(() => {})
+      }
     }
     db.prepare("UPDATE channel_instances SET status='disconnected' WHERE id=?").run(req.params.id)
     res.json({ ok: true })
@@ -1156,10 +1692,94 @@ app.post('/webhook/waha', async (req, res) => {
   const from      = rawChatId.replace(/@(s\.whatsapp\.net|c\.us|lid)$/i, '')
   const chatSuffix = rawChatId.includes('@c.us') ? '@c.us' : '@s.whatsapp.net'
   console.log(`📱 chatId raw: ${rawChatId} | from: ${from} | suffix: ${chatSuffix}`)
+  // Debug: loggear payload completo cuando es @lid para descubrir campos con número real
+  // SenderAlt: número real cuando el chatId es @lid (privacidad de WhatsApp)
+  const senderAlt = msg._data?.Info?.SenderAlt || msg._data?.Info?.senderAlt || null
+  const realPhone = senderAlt ? senderAlt.replace(/@(s\.whatsapp\.net|c\.us)$/i, '') : null
+  if (rawChatId.toLowerCase().endsWith('@lid') && realPhone) {
+    console.log(`[LID→REAL] ${rawChatId} → ${realPhone}@s.whatsapp.net`)
+  }
   const body      = msg.body || msg.caption || ''
-  const name      = msg._data?.notifyName || msg.pushName || msg.author || from
-  console.log('📱 from:', from, '| body:', body?.slice(0, 40), '| projectId:', projectId)
+  const pushName  = msg._data?.Info?.PushName || msg._data?.notifyName || msg.pushName || null
+  // Para notificaciones: usar pushName si hay, sino buscar en contactos, sino el número limpio
+  const effectivePhone = realPhone || from
+  const contactRow = effectivePhone ? db.prepare('SELECT name FROM contacts WHERE phone=? LIMIT 1').get(effectivePhone) : null
+  const name      = pushName || contactRow?.name || effectivePhone
+  console.log('📱 from:', from, '| real:', realPhone || 'LID', '| body:', body?.slice(0, 40), '| projectId:', projectId)
 
+  // Auto-crear/actualizar contacto (realPhone resuelve LID → número real)
+  upsertContactFromWA(inst.workspace_id, rawChatId, pushName, realPhone)
+
+  // ── Path directo: WAHA → Dify (sin Tiledesk) ────────────────────────────────
+  const llmCfg = db.prepare('SELECT llm_provider, llm_api_key FROM channel_settings WHERE workspace_id=?').get(inst.workspace_id)
+  if (llmCfg?.llm_provider === 'dify' && llmCfg?.llm_api_key) {
+    try {
+      const CONV_TTL_SECS  = 30 * 60
+      const HUMAN_TTL_SECS = 4 * 60 * 60
+      db.prepare(
+        "UPDATE wa_conversations SET closed=1 WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 AND ((bot_mode='bot' AND (strftime('%s','now') - updated_at) > ?) OR (bot_mode='human' AND (strftime('%s','now') - updated_at) > ?))"
+      ).run(inst.workspace_id, sessionName, rawChatId, from, CONV_TTL_SECS, HUMAN_TTL_SECS)
+
+      let waConv = db.prepare(
+        'SELECT * FROM wa_conversations WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 ORDER BY updated_at DESC LIMIT 1'
+      ).get(inst.workspace_id, sessionName, rawChatId, from)
+
+      if (waConv?.bot_mode === 'human') {
+        db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(waConv.request_id)
+        console.log(`👤 [Dify] Modo humano — ignorado: ${from}`)
+        return
+      }
+
+      let requestId = waConv?.request_id
+      if (!requestId) {
+        requestId = `dify-${randomUUID()}`
+        db.prepare(
+          "INSERT INTO wa_conversations (id,workspace_id,session_name,wa_from,request_id,closed,updated_at) VALUES (?,?,?,?,?,0,strftime('%s','now'))"
+        ).run(randomUUID(), inst.workspace_id, sessionName, rawChatId, requestId)
+        waConv = { request_id: requestId, dify_conversation_id: null, bot_mode: 'bot' }
+        console.log(`➕ [Dify] Nueva conv: ${requestId}`)
+      } else {
+        db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
+      }
+
+      const difyConvId = waConv.dify_conversation_id || extDifyConvId.get(requestId)
+      const { text: reply, difyConversationId } = await callLLM({
+        messages: [{ role: 'user', content: body }],
+        workspaceId: inst.workspace_id,
+        difyConversationId: difyConvId,
+      })
+
+      if (difyConversationId) {
+        extDifyConvId.set(requestId, difyConversationId)
+        db.prepare('UPDATE wa_conversations SET dify_conversation_id=? WHERE request_id=?').run(difyConversationId, requestId)
+      }
+
+      let finalReply = reply || ''
+      if (finalReply.includes('[HANDOFF]')) {
+        finalReply = finalReply.replace(/\[HANDOFF\]/g, '').trim() || 'Un momento, te conecto con un asesor.'
+        db.prepare("UPDATE wa_conversations SET bot_mode='human', updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
+        extDifyConvId.delete(requestId)
+        console.log(`👤 [Dify] HANDOFF detectado → modo humano`)
+      }
+
+      if (!finalReply) return
+
+      const waSettings = getChannelSettings(inst.workspace_id)
+      const chatId = rawChatId.includes('@') ? rawChatId : `${rawChatId}@c.us`
+      await fetch(`${waSettings.waha_url}/api/sendText`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': waSettings.waha_key || '' },
+        body: JSON.stringify({ chatId, text: finalReply, session: sessionName }),
+      })
+      console.log(`✓ [Dify direct] → ${chatId} | ${finalReply.slice(0, 50)}`)
+      sseEmit(inst.workspace_id, { event: 'new-message', requestId, from, name, text: body })
+    } catch(e) {
+      console.error('⚠ Dify direct error:', e.message)
+    }
+    return
+  }
+
+  // ── Path Tiledesk ─────────────────────────────────────────────────────────────
   // fetch con timeout
   async function tdFetchTo(path, opts = {}, ms = 12000) {
     const ctrl = new AbortController()
@@ -1222,19 +1842,24 @@ app.post('/webhook/waha', async (req, res) => {
 
     // 3. Buscar conversación activa en DB de ARIA
     let requestId = null
-    // Expirar convs sin actividad en 30 min → nueva conv con bot fresco
-    const CONV_TTL_SECS = 30 * 60
-    // Buscar por rawChatId (con sufijo) o por from (sin sufijo) para compatibilidad con registros viejos
+    const CONV_TTL_SECS  = 30 * 60     // bot mode: 30 min
+    const HUMAN_TTL_SECS = 4 * 60 * 60 // human mode: 4 horas
     db.prepare(
-      "UPDATE wa_conversations SET closed=1 WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 AND (strftime('%s','now') - updated_at) > ?"
-    ).run(inst.workspace_id, sessionName, rawChatId, from, CONV_TTL_SECS)
+      "UPDATE wa_conversations SET closed=1 WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 AND ((bot_mode='bot' AND (strftime('%s','now') - updated_at) > ?) OR (bot_mode='human' AND (strftime('%s','now') - updated_at) > ?))"
+    ).run(inst.workspace_id, sessionName, rawChatId, from, CONV_TTL_SECS, HUMAN_TTL_SECS)
 
     const waConv = db.prepare(
-      'SELECT request_id FROM wa_conversations WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 ORDER BY updated_at DESC LIMIT 1'
+      'SELECT request_id, bot_mode FROM wa_conversations WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 ORDER BY updated_at DESC LIMIT 1'
     ).get(inst.workspace_id, sessionName, rawChatId, from)
 
     if (waConv) {
       requestId = waConv.request_id
+      // Modo humano: actualizar timestamp e ignorar bot
+      if (waConv.bot_mode === 'human') {
+        db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
+        console.log(`👤 Chat modo humano — bot ignorado: ${requestId.slice(-8)}`)
+        return
+      }
       console.log('📂 Conv existente:', requestId)
       const msgR = await tdFetchTo(`/${projectId}/requests/${requestId}/messages`, {
         method: 'POST', headers: anonH,
@@ -1373,6 +1998,114 @@ app.post('/webhook/tiledesk', async (req, res) => {
   }
 })
 
+// ── EvolutionGo webhook ───────────────────────────────────────────────────────
+app.post('/webhook/evogo', async (req, res) => {
+  res.json({ ok: true })
+  const payload = req.body
+  if (!payload) return
+
+  const event = payload.event || ''
+  const instanceName = payload.instance || ''
+  if (!instanceName) return
+
+  // Buscar instancia en DB por nombre
+  const inst = db.prepare("SELECT * FROM channel_instances WHERE instance_name=? AND provider='evolution'").get(instanceName)
+  if (!inst) return console.log(`⚠ evogo webhook: instancia '${instanceName}' no encontrada`)
+
+  // Actualizar estado de conexión
+  if (event === 'connection.update' || event === 'Connection') {
+    const state = payload.data?.state || payload.state || ''
+    const status = state === 'open' ? 'WORKING' : state === 'close' ? 'disconnected' : 'STARTING'
+    db.prepare("UPDATE channel_instances SET status=? WHERE id=?").run(status, inst.id)
+    console.log(`🔄 evogo connection update: ${instanceName} → ${status}`)
+    return
+  }
+
+  // Procesar mensajes entrantes
+  if (event !== 'messages.upsert' && event !== 'Messages') return
+  const msgData = payload.data || payload
+  const key = msgData.key || {}
+  if (key.fromMe) return  // ignorar mensajes propios
+
+  const rawChatId = key.remoteJid || ''
+  if (!rawChatId || rawChatId === 'status@broadcast' || rawChatId.endsWith('@g.us')) return
+
+  const body = msgData.message?.conversation || msgData.message?.extendedTextMessage?.text || ''
+  if (!body) return
+
+  const from     = rawChatId.replace(/@(s\.whatsapp\.net|c\.us)$/i, '')
+  const pushName = msgData.pushName || null
+  const contactRow2 = from ? db.prepare('SELECT name FROM contacts WHERE phone=? LIMIT 1').get(from) : null
+  const name     = pushName || contactRow2?.name || from
+
+  console.log(`📨 evogo: ${from} → ${body.slice(0, 50)}`)
+
+  // Auto-crear/actualizar contacto (evogo no tiene SenderAlt)
+  upsertContactFromWA(inst.workspace_id, rawChatId, pushName, null)
+
+  try {
+    const CONV_TTL_SECS = 30 * 60
+    db.prepare(
+      "UPDATE wa_conversations SET closed=1 WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 AND bot_mode='bot' AND (strftime('%s','now') - updated_at) > ?"
+    ).run(inst.workspace_id, instanceName, rawChatId, from, CONV_TTL_SECS)
+
+    let waConv = db.prepare(
+      'SELECT * FROM wa_conversations WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 ORDER BY updated_at DESC LIMIT 1'
+    ).get(inst.workspace_id, instanceName, rawChatId, from)
+
+    if (waConv?.bot_mode === 'human') {
+      db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(waConv.request_id)
+      sseEmit(inst.workspace_id, { event: 'new-message', from, name, text: body })
+      return
+    }
+
+    let requestId = waConv?.request_id
+    if (!requestId) {
+      requestId = `evogo-${randomUUID()}`
+      db.prepare(
+        "INSERT INTO wa_conversations (id,workspace_id,session_name,wa_from,request_id,closed,updated_at) VALUES (?,?,?,?,?,0,strftime('%s','now'))"
+      ).run(randomUUID(), inst.workspace_id, instanceName, rawChatId, requestId)
+      waConv = { request_id: requestId, dify_conversation_id: null, bot_mode: 'bot' }
+    } else {
+      db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
+    }
+
+    const difyConvId = waConv?.dify_conversation_id || extDifyConvId.get(requestId)
+    const { text: reply, difyConversationId } = await callLLM({
+      messages: [{ role: 'user', content: body }],
+      workspaceId: inst.workspace_id,
+      difyConversationId: difyConvId,
+    })
+
+    if (difyConversationId) {
+      extDifyConvId.set(requestId, difyConversationId)
+      db.prepare('UPDATE wa_conversations SET dify_conversation_id=? WHERE request_id=?').run(difyConversationId, requestId)
+    }
+
+    let finalReply = reply || ''
+    if (finalReply.includes('[HANDOFF]')) {
+      finalReply = finalReply.replace(/\[HANDOFF\]/g, '').trim() || 'Un momento, te conecto con un asesor.'
+      db.prepare("UPDATE wa_conversations SET bot_mode='human', updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
+      extDifyConvId.delete(requestId)
+    }
+
+    if (!finalReply) return
+
+    const settings = getChannelSettings(inst.workspace_id)
+    const evoUrl = settings.evo_url || process.env.EVO_URL || ''
+    const number = from.replace(/\D/g, '')
+    await fetch(`${evoUrl}/send/text`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': inst.instance_token },
+      body: JSON.stringify({ number, text: finalReply }),
+    })
+    console.log(`✓ evogo → ${from}: ${finalReply.slice(0, 50)}`)
+    sseEmit(inst.workspace_id, { event: 'new-message', requestId, from, name, text: body })
+  } catch (e) {
+    console.error('⚠ evogo webhook error:', e.message)
+  }
+})
+
 // Registrar webhook en Tiledesk (llamar al configurar el bot activo)
 async function registerTiledeskWebhook(projectId) {
   try {
@@ -1452,6 +2185,10 @@ app.use('/api/tiledesk', requireAriaAuth, async (req, res, next) => {
         proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyStr))
         proxyReq.write(bodyStr)
       }
+      if (req.path.includes('/kb')) console.log(`🔵 proxy KB ${req.method} ${req.path}`)
+    },
+    proxyRes: (proxyRes, req) => {
+      if (req.path.includes('/kb')) console.log(`🔵 proxy KB res ${proxyRes.statusCode} ${req.path}`)
     },
   },
 }))
@@ -1528,10 +2265,22 @@ app.post('/api/waha/send', requireAriaAuth, async (req, res) => {
   if (!chatId || !text) return res.status(400).json({ error: 'chatId y text requeridos' })
   const s = getChannelSettings(req.ariaUser.workspaceId)
   const inst = session
-    ? db.prepare("SELECT * FROM channel_instances WHERE workspace_id=? AND session_name=?").get(req.ariaUser.workspaceId, session)
+    ? db.prepare("SELECT * FROM channel_instances WHERE workspace_id=? AND (session_name=? OR instance_name=?)").get(req.ariaUser.workspaceId, session, session)
     : getPrimaryWahaSession(req.ariaUser.workspaceId)
-  if (!inst) return res.status(400).json({ error: 'Sin sesión WAHA activa' })
+  if (!inst) return res.status(400).json({ error: 'Sin sesión activa' })
   try {
+    if (inst.provider === 'evolution') {
+      const evoUrl = s.evo_url || process.env.EVO_URL || ''
+      const number = chatId.replace(/@(s\.whatsapp\.net|c\.us)$/i, '').replace(/\D/g, '')
+      const r = await fetch(`${evoUrl}/send/text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': inst.instance_token },
+        body: JSON.stringify({ number, text }),
+      })
+      const data = await r.json().catch(() => ({}))
+      if (!r.ok) return res.status(r.status).json(data)
+      return res.json(data)
+    }
     const r = await wahaReq(s, `/api/sendText`, {
       method: 'POST',
       body: JSON.stringify({ chatId, text, session: inst.session_name }),
@@ -1692,16 +2441,47 @@ setInterval(async () => {
 // ── AI: sugerir respuesta ─────────────────────────────────────────────────────
 app.post('/api/ai/suggest', requireAriaAuth, async (req, res) => {
   const { messages, contactName } = req.body || {}
+  const wsId = req.ariaUser?.workspaceId
   try {
     const history = (messages || []).slice(-10).reverse().map(m => ({
       role: m.fromMe ? 'assistant' : 'user',
       content: m.body || m.caption || '[media]',
     }))
-    const { text, model, usage } = await callLLM({ workspaceId: req.ariaUser?.workspaceId,       system: `Sos un asistente de ventas y atención al cliente. El cliente se llama ${contactName || 'el cliente'}. Sugerí una respuesta corta, amable y en español al último mensaje. Solo devolvé el texto de la respuesta, sin explicaciones.`,
+
+    // Si hay bot activo con Dify, usarlo directamente (ya tiene KB + personalidad)
+    const cs = db.prepare('SELECT default_bot_id FROM channel_settings WHERE workspace_id=?').get(wsId)
+    const activeBotId = cs?.default_bot_id
+    if (activeBotId) {
+      const bot = db.prepare('SELECT dify_api_key FROM dify_agents WHERE id=? AND workspace_id=?').get(activeBotId, wsId)
+      if (bot?.dify_api_key) {
+        const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
+        const lastUserMsg = [...history].reverse().find(m => m.role === 'user')?.content || ''
+        const r = await fetch(`${difyUrl}/v1/chat-messages`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${bot.dify_api_key}`, 'content-type': 'application/json' },
+          body: JSON.stringify({
+            inputs: {},
+            query: lastUserMsg,
+            response_mode: 'blocking',
+            conversation_id: '',
+            user: `suggest-${wsId}`,
+          }),
+        })
+        const d = await r.json()
+        const suggestion = d.answer?.trim() || null
+        trackLlmUsage(wsId, 'ai-suggest', 'dify', { input_tokens: d.metadata?.usage?.prompt_tokens || 0, output_tokens: d.metadata?.usage?.completion_tokens || 0 })
+        return res.json({ suggestion })
+      }
+    }
+
+    // Fallback: callLLM con config del workspace
+    const { text, model, usage } = await callLLM({
+      workspaceId: wsId,
+      system: `Sos un asistente de ventas y atención al cliente. El cliente se llama ${contactName || 'el cliente'}. Sugerí una respuesta corta, amable y en español al último mensaje. Solo devolvé el texto de la respuesta, sin explicaciones.`,
       messages: history,
       max_tokens: 200,
     })
-    trackLlmUsage(req.ariaUser?.workspaceId, 'ai-suggest', model, usage)
+    trackLlmUsage(wsId, 'ai-suggest', model, usage)
     res.json({ suggestion: text || null })
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -1711,33 +2491,493 @@ app.post('/api/ai/suggest', requireAriaAuth, async (req, res) => {
 // ── Agent Wizard ──────────────────────────────────────────────────────────────
 
 const FLOW_TEMPLATES = {
-  'lead-qualifier':        'ARIA Agent.json',
-  'faq':                   'ARIA Agent.json',
-  'travel':                'ARIA Agent.json',
-  'broker':                'ARIA Agent.json',
-  'concesionaria-directa': 'ARIA Agent.json',
-  'concesionaria-plan':    'ARIA Agent.json',
-  'chatgpt-task':          'ARIA Agent.json',
-  'aria-agent':            'ARIA Agent.json',
+  'lead-qualifier':        'AI My Agent.json',
+  'faq':                   'AI My Agent.json',
+  'travel':                'AI My Agent.json',
+  'broker':                'AI My Agent.json',
+  'concesionaria-directa': 'AI My Agent.json',
+  'concesionaria-plan':    'AI My Agent.json',
+  'chatgpt-task':          'AI My Agent.json',
+  'aria-agent':            'AI My Agent.json',
 }
 const FLOWS_DIR = join(__dirname, '../flows')
 
-function loadFlow(templateId) {
-  const file = FLOW_TEMPLATES[templateId] || 'QualiBot Pro.json'
+// ── Dify console API helpers ──────────────────────────────────────────────────
+
+// Retorna { accessToken, csrfToken } — Dify usa double-submit cookie para CSRF
+async function getDifyAdminToken() {
+  const difyUrl  = process.env.DIFY_URL            || 'https://dify.saludok.com.ar'
+  const email    = process.env.DIFY_ADMIN_EMAIL    || 'hernan527@gmail.com'
+  const password = process.env.DIFY_ADMIN_PASSWORD || ''
+  const passwordB64 = Buffer.from(password).toString('base64')
+  const r = await fetch(`${difyUrl}/console/api/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: passwordB64, language: 'en-US', remember_me: true }),
+  })
+  const cookies = typeof r.headers.getSetCookie === 'function'
+    ? r.headers.getSetCookie()
+    : [(r.headers.get('set-cookie') || '')]
+  const get = (name) => {
+    const c = cookies.find(c => c.startsWith(name + '='))
+    return c ? c.split(';')[0].slice(name.length + 1) : null
+  }
+  const accessToken = get('access_token')
+  const csrfToken   = get('csrf_token')
+  if (!accessToken) throw new Error('Dify login falló — no se recibió access_token')
+  return { accessToken, csrfToken }
+}
+
+// Actualiza pre_prompt + parámetros del modelo en una app Dify sin pisar el modelo configurado
+async function difyUpdateModelConfig(appId, { prePrompt, temperature, topP, datasetId }) {
+  // Leer config actual para preservar modelo
+  const cur = await difyConsoleApi(`/apps/${appId}/model-config`)
+  const curData = await cur.json().catch(() => ({}))
+  const model = curData?.model || { provider: 'openai', name: 'gpt-4o-mini', mode: 'chat' }
+  const completionParams = { ...(curData?.model?.completion_params || {}), max_tokens: 800 }
+  if (temperature !== undefined) completionParams.temperature = parseFloat(temperature)
+  if (topP       !== undefined) completionParams.top_p       = parseFloat(topP)
+
+  // Configurar dataset si corresponde
+  const retrieverResource = datasetId
+    ? { enabled: true }
+    : (curData?.retriever_resource ?? { enabled: false })
+
+  const datasetConfigs = datasetId
+    ? {
+        datasets: { datasets: [{ dataset: { enabled: true, id: datasetId } }] },
+        retrieval_model: 'single',
+        reranking_enable: false,
+        top_k: 4,
+        score_threshold_enabled: false,
+        score_threshold: 0.5,
+      }
+    : (curData?.dataset_configs ?? undefined)
+
+  const payload = {
+    pre_prompt:                       prePrompt ?? curData?.pre_prompt ?? '',
+    opening_statement:                curData?.opening_statement ?? '¡Hola! ¿En qué puedo ayudarte hoy?',
+    suggested_questions:              curData?.suggested_questions ?? [],
+    suggested_questions_after_answer: curData?.suggested_questions_after_answer ?? { enabled: false },
+    speech_to_text:                   curData?.speech_to_text ?? { enabled: false },
+    retriever_resource:               retrieverResource,
+    sensitive_word_avoidance:         curData?.sensitive_word_avoidance ?? { enabled: false },
+    more_like_this:                   curData?.more_like_this ?? { enabled: false },
+    user_input_form:                  curData?.user_input_form ?? [],
+    model:                            { ...model, completion_params: completionParams },
+  }
+  if (datasetConfigs) payload.dataset_configs = datasetConfigs
+
+  await difyConsoleApi(`/apps/${appId}/model-config`, 'POST', payload)
+}
+
+// Llama console API de Dify — cookie + X-CSRFToken para POST/PUT/DELETE
+async function difyConsoleApi(path, method = 'GET', body = null) {
+  const { accessToken, csrfToken } = await getDifyAdminToken()
+  const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
+  const headers = {
+    'Content-Type': 'application/json',
+    'Cookie': `access_token=${accessToken}${csrfToken ? `; csrf_token=${csrfToken}` : ''}`,
+  }
+  if (csrfToken && method !== 'GET') headers['X-CSRF-Token'] = csrfToken
+  const opts = { method, headers }
+  if (body) opts.body = JSON.stringify(body)
+  return fetch(`${difyUrl}/console/api${path}`, opts)
+}
+
+// Service API de Dify — Bearer token (para operaciones de dataset/documentos)
+let _difyDatasetApiKey = null
+async function getDifyDatasetApiKey() {
+  if (_difyDatasetApiKey) return _difyDatasetApiKey
+  // Intentar leer keys existentes
+  const listResp = await difyConsoleApi('/datasets/api-keys', 'GET')
+  if (listResp.ok) {
+    const listData = await listResp.json()
+    if (listData.data?.length > 0) {
+      _difyDatasetApiKey = listData.data[0].token
+      return _difyDatasetApiKey
+    }
+  }
+  // Crear una nueva key
+  const createResp = await difyConsoleApi('/datasets/api-keys', 'POST')
+  const createData = await createResp.json()
+  if (!createData.token) throw new Error('No se pudo obtener dataset API key de Dify')
+  _difyDatasetApiKey = createData.token
+  return _difyDatasetApiKey
+}
+
+async function difyServiceApi(path, method = 'GET', body = null) {
+  const key = await getDifyDatasetApiKey()
+  const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
+  const headers = { 'Authorization': `Bearer ${key}` }
+  if (body && !(body instanceof Buffer)) headers['Content-Type'] = 'application/json'
+  const opts = { method, headers }
+  if (body) opts.body = (body instanceof Buffer) ? body : JSON.stringify(body)
+  return fetch(`${difyUrl}/v1${path}`, opts)
+}
+
+// Sube un archivo a Dify dataset via multipart (service API /v1/)
+async function difyUploadFileToDataset(datasetId, fileBuffer, filename, mimetype) {
+  const key = await getDifyDatasetApiKey()
+  const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
+  const boundary = '----AriaFormBoundary' + randomUUID().replace(/-/g, '')
+  const CRLF = '\r\n'
+  const dataStr = JSON.stringify({
+    indexing_technique: 'economy',
+    process_rule: { mode: 'automatic' },
+  })
+  const parts = []
+  parts.push(
+    Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="data"${CRLF}Content-Type: application/json${CRLF}${CRLF}${dataStr}${CRLF}`)
+  )
+  parts.push(
+    Buffer.from(`--${boundary}${CRLF}Content-Disposition: form-data; name="file"; filename="${filename}"${CRLF}Content-Type: ${mimetype}${CRLF}${CRLF}`)
+  )
+  parts.push(fileBuffer)
+  parts.push(Buffer.from(`${CRLF}--${boundary}--${CRLF}`))
+  const multipartBody = Buffer.concat(parts)
+
+  return fetch(`${difyUrl}/v1/datasets/${datasetId}/document/create-by-file`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+      'Authorization': `Bearer ${key}`,
+    },
+    body: multipartBody,
+  })
+}
+
+async function callLLMDirect({ system, userMsg }) {
+  // Para tareas meta (generar system prompts) usa siempre OpenAI/Anthropic, nunca Dify
+  if (process.env.OPENAI_API_KEY) {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 1500, messages: [{ role: 'system', content: system }, { role: 'user', content: userMsg }] }),
+    })
+    const d = await r.json()
+    return d.choices?.[0]?.message?.content?.trim() || ''
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 1500, system, messages: [{ role: 'user', content: userMsg }] }),
+    })
+    const d = await r.json()
+    return d.content?.[0]?.text?.trim() || ''
+  }
+  throw new Error('No hay API key de OpenAI o Anthropic configurada en el servidor')
+}
+
+// ── Generador de Chatflow DSL con integración HTTP ────────────────────────────
+function buildChatflowDSL({ agentName, systemPrompt, integrations, integrationDetail, apiKey: extApiKey, integrationUrl }) {
+  const ts = () => String(Date.now() + Math.floor(Math.random() * 9999))
+  const idStart = '1', idLlm = '2', idAnswer = '3'
+  const idHttp = '4', idLlm2 = '5', idAnswer2 = '6', idIfElse = '7'
+
+  const hasInteg = integrations && integrations !== 'none'
+
+  // Auth header para HTTP node
+  const authHeader = extApiKey && extApiKey.toLowerCase() !== 'sin auth'
+    ? (extApiKey.startsWith('Bearer ') ? extApiKey : `Bearer ${extApiKey}`)
+    : null
+
+  // URL del endpoint externo
+  let httpUrl = ''
+  if (integrations === 'sheets' && integrationUrl) {
+    httpUrl = `https://sheets.googleapis.com/v4/spreadsheets/${integrationUrl}/values/Sheet1`
+  } else if (integrations === 'api' && integrationUrl) {
+    httpUrl = integrationUrl
+  }
+
+  const baseNodes = [
+    {
+      id: idStart, type: 'custom',
+      data: { type: 'start', title: 'Inicio', desc: '', variables: [], selected: false },
+      position: { x: 80, y: 280 }, width: 244, height: 54,
+      sourcePosition: 'right', targetPosition: 'left',
+    },
+    {
+      id: idLlm, type: 'custom',
+      data: {
+        type: 'llm', title: hasInteg ? 'LLM — Clasificar consulta' : 'LLM', desc: '',
+        model: { provider: 'openai', name: 'gpt-4o-mini', mode: 'chat', completion_params: { temperature: 0.7 } },
+        prompt_template: [
+          { id: 'sys1', role: 'system', text: hasInteg
+            ? `${systemPrompt}\n\nSi el usuario solicita información que requiere consultar datos externos (${integrationDetail || 'datos externos'}), responde SOLO con la palabra: CONSULTAR_EXTERNO\nEn cualquier otro caso, responde normalmente.`
+            : systemPrompt },
+          { id: 'usr1', role: 'user', text: '{{#sys.query#}}' },
+        ],
+        context: { enabled: false, variable_selector: [] },
+        vision: { enabled: false }, variables: [], selected: false,
+      },
+      position: { x: 380, y: 280 }, width: 244, height: 98,
+      sourcePosition: 'right', targetPosition: 'left',
+    },
+  ]
+
+  let edges = [
+    { id: 'e1', source: idStart, target: idLlm, sourceHandle: 'source', targetHandle: 'target', type: 'custom', zIndex: 0, data: { isInIteration: false, sourceType: 'start', targetType: 'llm' } },
+  ]
+
+  let extraNodes = []
+
+  if (hasInteg) {
+    // Nodo IF/ELSE: ¿LLM dijo CONSULTAR_EXTERNO?
+    extraNodes.push({
+      id: idIfElse, type: 'custom',
+      data: {
+        type: 'if-else', title: '¿Consultar externo?', desc: '',
+        cases: [{
+          case_id: 'true', logical_operator: 'and',
+          conditions: [{
+            id: 'c1', varType: 'string',
+            variable_selector: [idLlm, 'text'],
+            comparison_operator: 'contains',
+            value: 'CONSULTAR_EXTERNO',
+          }],
+        }],
+        selected: false,
+      },
+      position: { x: 680, y: 200 }, width: 244, height: 126,
+      sourcePosition: 'right', targetPosition: 'left',
+    })
+
+    // Nodo HTTP request
+    extraNodes.push({
+      id: idHttp, type: 'custom',
+      data: {
+        type: 'http-request', title: integrations === 'sheets' ? 'Google Sheets' : 'API Externa', desc: '',
+        method: 'GET',
+        url: httpUrl || '{{your_api_url}}',
+        authorization: authHeader
+          ? { type: 'bearer', config: { token: authHeader } }
+          : { type: 'no-auth', config: null },
+        headers: '',
+        params: '',
+        body: { type: 'none', data: '' },
+        timeout: { max_connect_timeout: 10, max_read_timeout: 30, max_write_timeout: 10 },
+        selected: false,
+      },
+      position: { x: 980, y: 120 }, width: 244, height: 154,
+      sourcePosition: 'right', targetPosition: 'left',
+    })
+
+    // LLM 2: formular respuesta con datos externos
+    extraNodes.push({
+      id: idLlm2, type: 'custom',
+      data: {
+        type: 'llm', title: 'LLM — Responder con datos', desc: '',
+        model: { provider: 'openai', name: 'gpt-4o-mini', mode: 'chat', completion_params: { temperature: 0.5 } },
+        prompt_template: [
+          { id: 'sys2', role: 'system', text: `${systemPrompt}\n\nTenés acceso a los siguientes datos en tiempo real:\n{{#${idHttp}.body#}}\n\nUsá estos datos para responder la consulta del usuario de forma precisa y natural.` },
+          { id: 'usr2', role: 'user', text: '{{#sys.query#}}' },
+        ],
+        context: { enabled: false, variable_selector: [] },
+        vision: { enabled: false }, variables: [], selected: false,
+      },
+      position: { x: 1280, y: 120 }, width: 244, height: 98,
+      sourcePosition: 'right', targetPosition: 'left',
+    })
+
+    // Answer 1: cuando hay datos externos
+    extraNodes.push({
+      id: idAnswer2, type: 'custom',
+      data: { type: 'answer', title: 'Respuesta con datos', answer: `{{#${idLlm2}.text#}}`, desc: '', variables: [], selected: false },
+      position: { x: 1580, y: 120 }, width: 244, height: 107,
+      sourcePosition: 'right', targetPosition: 'left',
+    })
+
+    // Answer 2: respuesta directa (sin datos externos)
+    extraNodes.push({
+      id: idAnswer, type: 'custom',
+      data: { type: 'answer', title: 'Respuesta directa', answer: `{{#${idLlm}.text#}}`, desc: '', variables: [], selected: false },
+      position: { x: 980, y: 420 }, width: 244, height: 107,
+      sourcePosition: 'right', targetPosition: 'left',
+    })
+
+    edges = [
+      ...edges,
+      { id: 'e2', source: idLlm, target: idIfElse, sourceHandle: 'source', targetHandle: 'target', type: 'custom', zIndex: 0, data: { isInIteration: false, sourceType: 'llm', targetType: 'if-else' } },
+      { id: 'e3', source: idIfElse, target: idHttp, sourceHandle: 'true', targetHandle: 'target', type: 'custom', zIndex: 0, data: { isInIteration: false, sourceType: 'if-else', targetType: 'http-request' } },
+      { id: 'e4', source: idIfElse, target: idAnswer, sourceHandle: 'false', targetHandle: 'target', type: 'custom', zIndex: 0, data: { isInIteration: false, sourceType: 'if-else', targetType: 'answer' } },
+      { id: 'e5', source: idHttp, target: idLlm2, sourceHandle: 'source', targetHandle: 'target', type: 'custom', zIndex: 0, data: { isInIteration: false, sourceType: 'http-request', targetType: 'llm' } },
+      { id: 'e6', source: idLlm2, target: idAnswer2, sourceHandle: 'source', targetHandle: 'target', type: 'custom', zIndex: 0, data: { isInIteration: false, sourceType: 'llm', targetType: 'answer' } },
+    ]
+  } else {
+    // Sin integración: flujo simple Start → LLM → Answer
+    extraNodes.push({
+      id: idAnswer, type: 'custom',
+      data: { type: 'answer', title: 'Respuesta', answer: `{{#${idLlm}.text#}}`, desc: '', variables: [], selected: false },
+      position: { x: 680, y: 280 }, width: 244, height: 107,
+      sourcePosition: 'right', targetPosition: 'left',
+    })
+    edges.push({ id: 'e2', source: idLlm, target: idAnswer, sourceHandle: 'source', targetHandle: 'target', type: 'custom', zIndex: 0, data: { isInIteration: false, sourceType: 'llm', targetType: 'answer' } })
+  }
+
+  return {
+    nodes: [...baseNodes, ...extraNodes],
+    edges,
+    viewport: { x: 0, y: 0, zoom: 0.8 },
+  }
+}
+
+// POST /api/agents/quick-create
+// Crea un agente Dify completo desde descripción conversacional
+app.post('/api/agents/quick-create', requireAriaAuth, async (req, res) => {
+  const { description, name, company, tone, integrations, integrationDetail, apiKey: extApiKey, integrationUrl } = req.body
+  const workspaceId = req.ariaUser?.workspaceId
+  if (!description?.trim()) return res.status(400).json({ error: 'La descripción es requerida' })
+
+  const hasInteg = integrations && integrations !== 'none'
+
+  try {
+    // 1. Buscar agentes anteriores similares para usar como referencia
+    const prevAgents = db.prepare(
+      'SELECT name, description, system_prompt FROM dify_agents WHERE workspace_id=? ORDER BY created_at DESC LIMIT 5'
+    ).all(workspaceId)
+
+    const prevContext = prevAgents.length > 0
+      ? `\n\nAClaración: Ya creé estos agentes anteriormente para este mismo cliente. Usalos como referencia de estilo y nivel de detalle, pero adaptá el nuevo al contexto específico:\n${prevAgents.map(a => `- ${a.name}: ${a.description?.substring(0, 120)}`).join('\n')}`
+      : ''
+
+    // 2. Generar system prompt
+    const contextLines = [
+      company ? `Empresa / Marca: ${company}` : null,
+      name    ? `Nombre del agente: ${name}`   : null,
+      tone    ? `Tono requerido: ${tone}`       : null,
+      `Descripción y tareas: ${description}`,
+      hasInteg ? `Integración externa: ${integrationDetail || integrations}` : null,
+    ].filter(Boolean).join('\n')
+
+    const systemPrompt = await callLLMDirect({
+      system: `Sos un experto en diseño de asistentes virtuales de atención al cliente en español latinoamericano.
+Generá un system prompt profesional y detallado para un chatbot de WhatsApp.
+
+El system prompt debe:
+- Presentar el asistente con su nombre y empresa
+- Describir exactamente qué puede y qué NO puede responder
+- Usar el tono indicado de forma consistente
+- Nunca inventar información — si no sabe, decirlo con honestidad
+- Si se menciona derivación a humano: cuando el cliente lo pida o esté muy frustrado, responder con la frase exacta [HANDOFF]
+- Estar en español latinoamericano, ser específico, no genérico
+${prevContext}
+
+Solo devolvé el system prompt listo para usar, sin explicaciones ni comillas.`,
+      userMsg: contextLines,
+    })
+
+    // 3. Crear app en Dify vía console API
+    const agentName = name?.trim() || (company ? `Asistente ${company}` : 'Agente IA')
+    let appId, apiKey, hasWorkflow = false
+
+    if (hasInteg) {
+      // ── Chatflow con nodos ────────────────────────────────────────────────
+      const createResp = await difyConsoleApi('/apps', 'POST',
+        { name: agentName, mode: 'advanced-chat', icon: '🔌', icon_background: '#EFF1FE', description })
+      const appData = await createResp.json()
+      if (!appData.id) throw new Error('Error creando app: ' + JSON.stringify(appData))
+      appId = appData.id
+
+      const graph = buildChatflowDSL({ agentName, systemPrompt, integrations, integrationDetail, apiKey: extApiKey, integrationUrl })
+      await difyConsoleApi(`/apps/${appId}/workflows/draft`, 'PUT', { graph })
+      hasWorkflow = true
+    } else {
+      // ── Chat simple ───────────────────────────────────────────────────────
+      const createResp = await difyConsoleApi('/apps', 'POST',
+        { name: agentName, mode: 'chat', icon: '🤖', icon_background: '#FFEAD5', description })
+      const appData = await createResp.json()
+      if (!appData.id) throw new Error('Error creando app: ' + JSON.stringify(appData))
+      appId = appData.id
+
+      const modelProvider = appData.model_config?.model?.provider || 'openai'
+      const modelName     = appData.model_config?.model?.name     || 'gpt-4o-mini'
+      await difyConsoleApi(`/apps/${appId}/model-config`, 'POST', {
+        pre_prompt: systemPrompt,
+        opening_statement: '¡Hola! ¿En qué puedo ayudarte hoy?',
+        suggested_questions: [], suggested_questions_after_answer: { enabled: false },
+        speech_to_text: { enabled: false }, retriever_resource: { enabled: false },
+        sensitive_word_avoidance: { enabled: false }, more_like_this: { enabled: false },
+        user_input_form: [],
+        model: { provider: modelProvider, name: modelName, mode: 'chat', completion_params: { temperature: 0.7, max_tokens: 800 } },
+      })
+    }
+
+    // 4. Crear API key
+    const keyResp = await difyConsoleApi(`/apps/${appId}/api-keys`, 'POST', {})
+    const keyData = await keyResp.json()
+    apiKey = keyData.token || keyData.api_key
+
+    // 5. Guardar en ARIA DB
+    const agentId = randomUUID()
+    db.prepare(`INSERT INTO dify_agents (id, workspace_id, name, description, system_prompt, dify_app_id, dify_api_key) VALUES (?,?,?,?,?,?,?)`)
+      .run(agentId, workspaceId, agentName, description, systemPrompt, appId, apiKey)
+
+    // 6. Activar como proveedor activo del workspace
+    const csExists = db.prepare('SELECT workspace_id FROM channel_settings WHERE workspace_id=?').get(workspaceId)
+    if (csExists) {
+      db.prepare('UPDATE channel_settings SET llm_provider=?, llm_api_key=?, llm_model=?, default_bot_id=? WHERE workspace_id=?')
+        .run('dify', apiKey, 'dify', '__dify__', workspaceId)
+    } else {
+      db.prepare('INSERT INTO channel_settings (workspace_id, llm_provider, llm_api_key, llm_model, default_bot_id) VALUES (?,?,?,?,?)')
+        .run(workspaceId, 'dify', apiKey, 'dify', '__dify__')
+    }
+
+    res.json({ success: true, agentId, appId, apiKey, agentName, systemPrompt, hasWorkflow })
+  } catch (e) {
+    console.error('quick-create error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// GET /api/agents/dify-list — lista agentes creados con quick-create
+app.get('/api/agents/dify-list', requireAriaAuth, (req, res) => {
+  const workspaceId = req.ariaUser?.workspaceId
+  const agents = db.prepare('SELECT * FROM dify_agents WHERE workspace_id=? ORDER BY created_at DESC').all(workspaceId)
+  res.json(agents)
+})
+
+// Listar flows disponibles en /flows/
+app.get('/api/agents/flows', requireAriaAuth, (req, res) => {
+  try {
+    const files = readdirSync(FLOWS_DIR)
+      .filter(f => f.endsWith('.json') && !f.startsWith('_'))
+      .sort()
+      .map(f => ({ filename: f, name: f.replace(/\.json$/, '') }))
+    res.json({ flows: files })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+function loadFlow(templateId, flowFile) {
+  // flowFile tiene prioridad (selección manual)
+  const file = flowFile || FLOW_TEMPLATES[templateId] || 'AI My Agent.json'
   return JSON.parse(readFileSync(join(FLOWS_DIR, file), 'utf8'))
 }
 
-function injectInstructions(flow, instructions, welcomeMsg) {
+function injectInstructions(flow, instructions, welcomeMsg, kbNamespaceId) {
   const intents = (flow.intents || []).map(intent => {
     const actions = (intent.actions || []).map(action => {
-      // Solo inyectar en el gpt_task principal (context no vacío = tarea conversacional)
+      // gpt_task (ARIA Agent.json — legacy)
       if (action._tdActionType === 'gpt_task' && instructions && action.context && action.context.trim().length > 0) {
         return { ...action, context: instructions }
       }
+      // askgptv2 (AI My Agent.json) — inyectar instrucciones + namespace KB
+      if (action._tdActionType === 'askgptv2' && instructions) {
+        return {
+          ...action,
+          context: instructions,
+          ...(kbNamespaceId ? { namespace: kbNamespaceId } : {}),
+        }
+      }
+      // ai_prompt en gen_welcome — usar el saludo del agente
+      if (action._tdActionType === 'ai_prompt' && intent.intent_display_name === 'gen_welcome' && welcomeMsg) {
+        return { ...action, question: `Usá exactamente este saludo, sin modificarlo: "${welcomeMsg}"` }
+      }
       return action
     })
-    // update welcome message
-    if (intent.intent_display_name === 'welcome' && welcomeMsg) {
+    // welcome_static (AI My Agent.json) y welcome (ARIA Agent.json)
+    if ((intent.intent_display_name === 'welcome_static' || intent.intent_display_name === 'welcome') && welcomeMsg) {
       const updatedActions = actions.map(action => {
         if (action._tdActionType === 'reply') {
           const commands = (action.attributes?.commands || []).map(cmd => {
@@ -1772,93 +3012,119 @@ async function importFlowToBot(projectId, botId, flowObj, token) {
 // bot_type='tilebot' (default) → bot interno con flujo JSON importado desde /flows/
 // bot_type='external'          → bot externo que llama a /api/bot-webhook (LLM directo en ARIA)
 app.post('/api/agents/create-draft', requireAriaAuth, async (req, res) => {
-  const { projectId, name, description, language, welcome_msg, template_id, bot_type } = req.body || {}
-  if (!projectId || !name) return res.status(400).json({ error: 'projectId y name requeridos' })
+  const { name, description, template_id } = req.body || {}
+  if (!name) return res.status(400).json({ error: 'name requerido' })
   try {
-    const token = await getTiledeskToken()
-    const ARIA_URL = process.env.ARIA_PUBLIC_URL || 'https://aria.saludok.com.ar'
-    const isExternal = bot_type === 'external'
-
-    const botPayload = isExternal
-      ? { name, description: description || '', type: 'external', subtype: 'chatbot', url: `${ARIA_URL}/api/bot-webhook` }
-      : { name, description: description || '', language: language || 'es', welcome_msg: welcome_msg || '', type: 'tilebot', subtype: 'chatbot' }
-
-    const botRes = await fetch(`${TILEDESK_URL}/${projectId}/bots`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: token },
-      body: JSON.stringify(botPayload),
+    // 1. Crear app en Dify
+    const createResp = await difyConsoleApi('/apps', 'POST', {
+      name,
+      mode: 'chat',
+      icon: '🤖',
+      icon_background: '#FFEAD5',
+      description: description || '',
     })
-    if (!botRes.ok) return res.status(botRes.status).json({ error: 'Error creando bot en Tiledesk' })
-    const bot = await botRes.json()
-    const botId = bot._id
+    const appData = await createResp.json()
+    if (!appData.id) throw new Error('Dify no creó la app: ' + JSON.stringify(appData).slice(0, 200))
+    const difyAppId = appData.id
 
-    // Crear namespace de KB exclusivo para este bot en Tiledesk
-    let kbNamespaceId = null
+    // 2. Crear API key para la app
+    const keyResp = await difyConsoleApi(`/apps/${difyAppId}/api-keys`, 'POST', {})
+    const keyData = await keyResp.json()
+    const difyApiKey = keyData.token || keyData.api_key
+    if (!difyApiKey) throw new Error('No se pudo obtener API key de Dify')
+
+    // 3. Crear dataset (Knowledge Base) para el agente en Dify
+    let difyDatasetId = null
     try {
-      const nsRes = await fetch(`${TILEDESK_URL}/${projectId}/kb/namespace`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: token },
-        body: JSON.stringify({ name: `${name} [${botId}]` }),
+      const dsResp = await difyConsoleApi('/datasets', 'POST', {
+        name: `KB — ${name}`,
+        description: `Base de conocimiento del agente ${name}`,
+        indexing_technique: 'economy',
+        permission: 'only_me',
       })
-      if (nsRes.ok) {
-        const nsData = await nsRes.json()
-        kbNamespaceId = nsData._id || nsData.id || null
-        console.log(`📚 KB namespace creado: ${kbNamespaceId} para bot ${botId}`)
-      } else {
-        console.warn(`⚠ KB namespace creation: ${nsRes.status}`)
+      const dsData = await dsResp.json()
+      difyDatasetId = dsData.id || null
+      if (difyDatasetId) {
+        console.log(`✓ Dify dataset creado: ${difyDatasetId}`)
+        // 4. Enlazar dataset a la app
+        await difyUpdateModelConfig(difyAppId, { datasetId: difyDatasetId })
       }
-    } catch (nsErr) { console.warn('⚠ KB namespace error:', nsErr.message) }
-
-    // Importar flujo de la plantilla (solo tilebots)
-    if (!isExternal && template_id) {
-      const flow = loadFlow(template_id)
-      const importRes = await importFlowToBot(projectId, botId, flow, token)
-      console.log(`📥 Flow import (${template_id}): ${importRes.status}`)
+    } catch (dsErr) {
+      console.warn('⚠ No se pudo crear dataset Dify (continúa sin KB):', dsErr.message)
     }
 
-    db.prepare(`INSERT OR IGNORE INTO agent_metadata (bot_id, workspace_id, template_id, bot_type, kb_namespace_id, updated_at)
-      VALUES (?, ?, ?, ?, ?, strftime('%s','now'))`)
-      .run(botId, req.ariaUser.workspaceId, template_id || null, isExternal ? 'external' : 'tilebot', kbNamespaceId)
+    // 5. Guardar en ARIA DB
+    const agentId = randomUUID()
+    db.prepare(`INSERT INTO dify_agents (id, workspace_id, name, description, template_id, dify_app_id, dify_api_key, dify_dataset_id) VALUES (?,?,?,?,?,?,?,?)`)
+      .run(agentId, req.ariaUser.workspaceId, name, description || '', template_id || null, difyAppId, difyApiKey, difyDatasetId)
 
-    res.json({ botId, name, bot_type: isExternal ? 'external' : 'tilebot', kbNamespaceId })
+    console.log(`✓ Dify app creada: ${difyAppId} → agent ${agentId}`)
+    res.json({ botId: agentId, kbNamespaceId: null, difyAppId, difyDatasetId })
   } catch (e) {
+    console.error('create-draft error:', e.message)
     res.status(500).json({ error: e.message })
   }
 })
 
 // Generar instrucciones con LLM (incluye KB de Tiledesk si existe)
 app.post('/api/agents/generate-instructions', requireAriaAuth, async (req, res) => {
-  const { agent_name, tone, nationality, company_name, company_description, websites, temperature, derivation_notes, bot_id } = req.body || {}
+  const { agent_name, tone, nationality, company_name, company_description, websites, temperature, derivation_notes, bot_id, template_id } = req.body || {}
 
-  // Leer KB del namespace exclusivo del bot (si existe)
+  // Leer KB del bot desde ARIA DB (aislada por bot_id)
   let kbSection = ''
   try {
-    const workspace  = db.prepare('SELECT tiledesk_project_id FROM workspaces WHERE id=?').get(req.ariaUser.workspaceId)
-    const projectId  = workspace?.tiledesk_project_id
-    // Intentar obtener el namespace del bot específico
-    const botMeta    = bot_id ? db.prepare('SELECT kb_namespace_id FROM agent_metadata WHERE bot_id=?').get(bot_id) : null
-    const nsId       = botMeta?.kb_namespace_id
-    if (projectId && nsId) {
-      const tdToken = await getTiledeskToken()
-      const kbRes   = await fetch(`${TILEDESK_URL}/${projectId}/kb/?namespace=${nsId}&direction=-1&sortField=updatedAt&limit=100`, {
-        headers: { Authorization: tdToken }
-      })
-      if (kbRes.ok) {
-        const kbData = await kbRes.json().catch(() => null)
-        const items  = Array.isArray(kbData?.kbs) ? kbData.kbs : []
-        if (items.length > 0) {
-          const lines = items.map(item => {
-            if (item.type === 'faq') return `  - ${item.name}: ${item.content?.slice(0, 400) || ''}`
-            if (item.type === 'url') return `  - Web (${item.source || item.name}): ${item.content?.slice(0, 300) || '(pendiente de indexar)'}`
-            return `  - ${item.name}: ${item.content?.slice(0, 300) || ''}${(item.content?.length || 0) > 300 ? '...' : ''}`
-          })
-          kbSection = `\n- Base de conocimiento del agente:\n${lines.join('\n')}`
-        }
+    if (bot_id) {
+      const items = db.prepare('SELECT type, title, content FROM agent_kb WHERE bot_id=? AND workspace_id=? ORDER BY created_at DESC LIMIT 100')
+        .all(bot_id, req.ariaUser.workspaceId)
+      if (items.length > 0) {
+        const lines = items.map(item => {
+          if (item.type === 'faq') return `  - ${item.title}: ${item.content?.slice(0, 400) || ''}`
+          if (item.type === 'url') return `  - Web (${item.title}): ${item.content?.slice(0, 300) || ''}`
+          return `  - ${item.title}: ${item.content?.slice(0, 300) || ''}${(item.content?.length || 0) > 300 ? '...' : ''}`
+        })
+        kbSection = `\n- Base de conocimiento del agente:\n${lines.join('\n')}`
       }
     }
   } catch (_) {}
 
-  const prompt = `Generá un prompt completo en español para un agente de IA de WhatsApp con los siguientes datos:
+  const isBrokerSalud = ['broker', 'lead-qualifier'].includes(template_id)
+
+  const prompt = isBrokerSalud
+    ? `Generá un prompt completo en español para un agente de IA de WhatsApp especializado en calificar leads para broker de salud / prepagas. Usá EXACTAMENTE los datos provistos — no uses placeholders, completá todo con la información real.
+
+Datos del agente:
+- Nombre: ${agent_name}
+- Tono: ${tone}
+- Región/expresiones: ${nationality}
+- Empresa: ${company_name}
+- Descripción de la empresa: ${company_description}
+${websites?.filter(Boolean).length ? `- Sitios web: ${websites.filter(Boolean).join(', ')}` : ''}
+${derivation_notes ? `- Criterios de derivación: ${derivation_notes}` : ''}${kbSection}
+
+El prompt resultante debe tener estas secciones completamente redactadas (no como esquema, sino como texto final listo para usar):
+
+# Instrucciones del agente: ${agent_name}
+
+## Rol y personalidad
+Redactar en primera persona describiendo al agente ${agent_name} como especialista de ${company_name}, con tono ${tone} y expresiones de ${nationality}. Incluir reglas irrompibles: máx 2-3 oraciones por respuesta, una sola pregunta por mensaje, si califica asignar puntuación 0-100 y derivar a asesor.
+
+## Sobre la empresa
+Texto completo usando la descripción de ${company_name}: área de operación, modalidades (particular / empleado en relación de dependencia), criterio de lead calificado.
+
+## Derivación a asesor humano
+Lista concreta de situaciones de derivación, basada en los criterios provistos${derivation_notes ? ' y los criterios de derivación dados' : ''}.
+
+## Flujo de conversación
+Pasos internos numerados (advertir que nunca se muestran así al usuario). Incluir: saludo presentándose como ${agent_name} de ${company_name}, situación actual de cobertura, grupo familiar y edades, modalidad de pago (recibo sueldo/monotributo/particular), tratamientos o medicación, datos de contacto (nombre completo, email, CUIL), cierre cálido con próximos pasos.
+
+## Memoria y contexto
+Reglas de continuidad: nunca pedir datos ya dados, nunca empezar de cero si hay historial. Incluir ejemplo correcto vs incorrecto.
+
+## Resumen estructurado
+Template completo: Qué busca mejorar, Cobertura para, Modalidad de pago, Tratamientos/medicación, Datos de contacto, Presupuesto actual, Prestaciones buscadas, Estado del lead, Puntuación 0-100, Próximos pasos.
+
+Escribí solo el prompt final redactado, sin explicaciones ni meta-comentarios.`
+    : `Generá un prompt completo en español para un agente de IA de WhatsApp con los siguientes datos:
 
 - Nombre del agente: ${agent_name}
 - Tono: ${tone}
@@ -1905,7 +3171,7 @@ app.post('/api/agents/playground', requireAriaAuth, async (req, res) => {
 // ── Test chat real con bot Tiledesk ───────────────────────────────────────────
 // Según docs: POST a support-group-{UUID}/messages crea la request automáticamente.
 // Agregar bot como participante dispara \start → welcome del bot.
-const testSessions = new Map() // botId → { requestId, msgCount }
+const testSessions = new Map() // botId → { conversationId }
 
 function extractMsgText(m) {
   if (m.text?.trim()) return m.text.trim()
@@ -1927,113 +3193,39 @@ async function pollBotMsgs(msgsUrl, headers, fromIdx, maxMs = 15000) {
   return { msgs: [], total: fromIdx }
 }
 
-// { projectId, reset }  → nueva sesión, retorna { welcome, requestId }
-// { projectId, text }   → mensaje en sesión existente, retorna { reply }
-// Flujo: mensajes del usuario usan token anónimo (end-user) — el bot ignora mensajes de admin.
+// Chat de prueba con agente Dify (playground del wizard)
 app.post('/api/agents/:botId/test-chat', requireAriaAuth, async (req, res) => {
   const { botId } = req.params
-  const { projectId, text, reset } = req.body || {}
-  if (!projectId) return res.status(400).json({ error: 'projectId requerido' })
+  const { text, reset } = req.body || {}
+
+  const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
+  if (!agent?.dify_api_key) return res.status(404).json({ error: 'Agente no encontrado o sin API key' })
+
+  if (reset) testSessions.delete(botId)
+
+  const session = testSessions.get(botId) || {}
+  const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
+  const queryText = text || '¡Hola!'
 
   try {
-    const adminToken = await getTiledeskToken()
-    const adminH = { Authorization: adminToken, 'Content-Type': 'application/json' }
-
-    // ── Nueva sesión ─────────────────────────────────────────────────────────
-    if (reset || !testSessions.get(botId)) {
-      // 1. Autenticación anónima — el bot solo responde a mensajes de end-users
-      const anonRes = await fetch(`${TILEDESK_URL}/auth/signinAnonymously`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_project: projectId, firstname: 'ARIA Playground' }),
-      })
-      const anonData = await anonRes.json()
-      const anonToken  = anonData.token
-      const anonUserId = anonData.user?._id
-      const anonH = { Authorization: anonToken, 'Content-Type': 'application/json' }
-
-      // 2. Cambiar temporalmente el bot del departamento por defecto al bot que se quiere testear.
-      //    El routing de Tiledesk asigna el bot del depto al crear la conversación.
-      //    try/finally garantiza que se restaura aunque falle.
-      const deptsRes = await fetch(`${TILEDESK_URL}/${projectId}/departments`, { headers: adminH })
-      const depts = await deptsRes.json().catch(() => [])
-      const defaultDept = Array.isArray(depts) ? depts[0] : null
-      const originalBotId = defaultDept?.id_bot
-
-      if (defaultDept && originalBotId !== botId) {
-        await fetch(`${TILEDESK_URL}/${projectId}/departments/${defaultDept.id}`, {
-          method: 'PUT', headers: adminH,
-          body: JSON.stringify({ id_bot: botId }),
-        })
-      }
-
-      let welcome = null
-      let total = 0
-      let requestId
-
-      try {
-        // 3. requestId en formato requerido por Tiledesk
-        requestId = `support-group-${projectId}-${randomUUID().replace(/-/g, '')}`
-        const msgsUrl = `${TILEDESK_URL}/${projectId}/requests/${requestId}/messages`
-
-        // 4. Primer POST crea la request — el bot del depto se asigna automáticamente
-        await fetch(msgsUrl, {
-          method: 'POST', headers: anonH,
-          body: JSON.stringify({ text: 'start', sender: anonUserId }),
-        })
-
-        // Marcar el lead generado como contacto de prueba (aria_test_contact)
-        // para filtrarlo en Contactos y Embudo sin depender del nombre
-        try {
-          const reqData = await fetch(`${TILEDESK_URL}/${projectId}/requests/${requestId}`, { headers: adminH })
-            .then(r => r.json()).catch(() => null)
-          const leadId = reqData?.lead?._id || reqData?.lead_id
-          if (leadId) {
-            await fetch(`${TILEDESK_URL}/${projectId}/leads/${leadId}`, {
-              method: 'PUT', headers: adminH,
-              body: JSON.stringify({ attributes: { aria_test_contact: true } }),
-            }).catch(() => {})
-          }
-        } catch (_) {}
-
-        // 5. Esperar welcome del bot correcto
-        const result = await pollBotMsgs(msgsUrl, adminH, 1, 12000)
-        welcome = result.msgs.map(extractMsgText).join('\n\n') || null
-        total   = result.total
-      } finally {
-        // 6. Restaurar bot original del departamento
-        if (defaultDept && originalBotId && originalBotId !== botId) {
-          await fetch(`${TILEDESK_URL}/${projectId}/departments/${defaultDept.id}`, {
-            method: 'PUT', headers: adminH,
-            body: JSON.stringify({ id_bot: originalBotId }),
-          }).catch(() => {})
-        }
-      }
-
-      testSessions.set(botId, { requestId, msgCount: total, anonToken, anonUserId })
-      return res.json({ welcome, reply: null, requestId })
-    }
-
-    // ── Mensaje en sesión existente ──────────────────────────────────────────
-    if (!text) return res.status(400).json({ error: 'text requerido' })
-    const session = testSessions.get(botId)
-    const msgsUrl = `${TILEDESK_URL}/${projectId}/requests/${session.requestId}/messages`
-    const anonH   = { Authorization: session.anonToken, 'Content-Type': 'application/json' }
-
-    // Contar mensajes reales antes de enviar
-    const snap = await fetch(msgsUrl, { headers: adminH }).then(r => r.json()).catch(() => [])
-    const beforeCount = Array.isArray(snap) ? snap.length : session.msgCount
-
-    // Enviar mensaje como end-user (anónimo) para que el bot lo procese
-    await fetch(msgsUrl, {
-      method: 'POST', headers: anonH,
-      body: JSON.stringify({ text, sender: session.anonUserId }),
+    const r = await fetch(`${difyUrl}/v1/chat-messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${agent.dify_api_key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        inputs: {},
+        query: queryText,
+        response_mode: 'blocking',
+        conversation_id: session.conversationId || '',
+        user: req.ariaUser.workspaceId,
+      }),
     })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d.message || JSON.stringify(d).slice(0, 200))
 
-    const { msgs: replyMsgs, total } = await pollBotMsgs(msgsUrl, adminH, beforeCount + 1, 15000)
-    const reply = replyMsgs.map(extractMsgText).join('\n\n') || null
-    session.msgCount = total
+    testSessions.set(botId, { conversationId: d.conversation_id })
 
-    return res.json({ welcome: null, reply, requestId: session.requestId })
+    if (reset) return res.json({ welcome: d.answer || '¡Hola! ¿En qué puedo ayudarte?', reply: null })
+    return res.json({ welcome: null, reply: d.answer || '(sin respuesta)' })
   } catch (e) {
     console.error('test-chat error:', e.message)
     res.status(500).json({ error: e.message })
@@ -2043,46 +3235,98 @@ app.post('/api/agents/:botId/test-chat', requireAriaAuth, async (req, res) => {
 // Finalizar: actualizar bot + re-importar flow con instrucciones inyectadas
 app.put('/api/agents/:botId/finalize', requireAriaAuth, async (req, res) => {
   const { botId } = req.params
-  const { projectId, name, description, welcome_msg, instructions, template_id, active, tone, nationality, company_name } = req.body || {}
-  if (!projectId || !botId) return res.status(400).json({ error: 'projectId y botId requeridos' })
-  try {
-    const token = await getTiledeskToken()
-    const existingMeta = db.prepare('SELECT bot_type FROM agent_metadata WHERE bot_id=?').get(botId)
-    const isExternal = (existingMeta?.bot_type || 'tilebot') === 'external'
+  const { name, instructions, template_id, tone, nationality, company_name, company_description, derivation_notes } = req.body || {}
 
-    await fetch(`${TILEDESK_URL}/${projectId}/bots/${botId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: token },
-      body: JSON.stringify({ name, description }),
+  const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
+  if (!agent) return res.status(404).json({ error: 'Agente no encontrado' })
+
+  try {
+    const temperature = parseFloat(req.body.temperature ?? 0.7)
+    const topP        = parseFloat(req.body.top_p ?? 1.0)
+
+    // 1. Actualizar system prompt + params en Dify (preserva modelo configurado)
+    await difyUpdateModelConfig(agent.dify_app_id, {
+      prePrompt:   instructions || '',
+      temperature,
+      topP,
+      datasetId: agent.dify_dataset_id || undefined,
     })
 
-    // Para bots externos: instrucciones se guardan en ARIA y el LLM las usa en runtime.
-    // Para tilebots: inyectar instrucciones en el flow de Tiledesk.
-    if (!isExternal && template_id) {
-      const flow = loadFlow(template_id)
-      const modified = injectInstructions(flow, instructions, welcome_msg)
-      await importFlowToBot(projectId, botId, modified, token)
+    // 2. Actualizar nombre en Dify si cambió
+    if (name && name !== agent.name) {
+      await difyConsoleApi(`/apps/${agent.dify_app_id}`, 'PUT', { name, description: agent.description || '' })
     }
 
-    db.prepare(`INSERT OR REPLACE INTO agent_metadata
-      (bot_id,workspace_id,tone,nationality,company_name,template_id,bot_type,active,instructions,temperature,top_p,channels,derivation_users,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%s','now'))`)
-      .run(botId, req.ariaUser.workspaceId, tone||null, nationality||null, company_name||null, template_id||null,
-        isExternal ? 'external' : 'tilebot',
-        active ? 1 : 0, instructions||null,
-        req.body.temperature ?? 1.0, req.body.top_p ?? 1.0,
+    // 3. Guardar metadata en ARIA DB
+    db.prepare(`UPDATE dify_agents SET
+      name=?, system_prompt=?, template_id=?, tone=?, nationality=?,
+      company_name=?, company_description=?, derivation_notes=?,
+      temperature=?, top_p=?, channels=?, derivation_users=?, active=1
+      WHERE id=?`)
+      .run(name || agent.name, instructions || '', template_id || agent.template_id || null,
+        tone || null, nationality || null, company_name || null, company_description || null,
+        derivation_notes || null, temperature, topP,
         JSON.stringify(req.body.channels || ['__all__']),
-        JSON.stringify(req.body.derivation_users || ['__all__']))
+        JSON.stringify(req.body.derivation_users || ['__all__']),
+        botId)
+
     res.json({ ok: true, botId })
+  } catch (e) {
+    console.error('finalize error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+// Metadata de agentes (Dify)
+app.get('/api/agents/metadata', requireAriaAuth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM dify_agents WHERE workspace_id=? ORDER BY created_at DESC').all(req.ariaUser.workspaceId)
+  const mapped = rows.map(r => ({
+    bot_id:              r.id,
+    workspace_id:        r.workspace_id,
+    name:                r.name,
+    description:         r.description,
+    tone:                r.tone,
+    nationality:         r.nationality,
+    company_name:        r.company_name,
+    company_description: r.company_description,
+    derivation_notes:    r.derivation_notes,
+    template_id:         r.template_id,
+    active:              r.active,
+    instructions:        r.system_prompt,
+    temperature:         r.temperature,
+    top_p:               r.top_p,
+    channels:            r.channels,
+    derivation_users:    r.derivation_users,
+    dify_app_id:         r.dify_app_id,
+    created_at:          r.created_at,
+  }))
+  res.json(mapped)
+})
+
+// Listar namespaces KB disponibles en el proyecto Tiledesk del workspace
+app.get('/api/kb/namespaces', requireAriaAuth, async (req, res) => {
+  try {
+    const workspace = db.prepare('SELECT tiledesk_project_id FROM workspaces WHERE id=?').get(req.ariaUser.workspaceId)
+    const projectId = workspace?.tiledesk_project_id
+    if (!projectId) return res.status(400).json({ error: 'No hay proyecto Tiledesk' })
+    const token = await getTiledeskToken()
+    const r = await fetch(`${TILEDESK_URL}/${projectId}/kb/namespace/all`, { headers: { Authorization: token } })
+    const data = await r.json().catch(() => [])
+    const list = (Array.isArray(data) ? data : []).map(n => ({ id: n._id || n.id, name: n.name, isDefault: !!n.default }))
+    res.json({ namespaces: list, projectId })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
 })
 
-// Metadata de agentes creados desde ARIA
-app.get('/api/agents/metadata', requireAriaAuth, (req, res) => {
-  const rows = db.prepare('SELECT * FROM agent_metadata WHERE workspace_id=?').all(req.ariaUser.workspaceId)
-  res.json(rows)
+// Cambiar el namespace KB asignado a un bot
+app.put('/api/agents/:botId/kb-namespace', requireAriaAuth, (req, res) => {
+  const { botId } = req.params
+  const { namespaceId } = req.body || {}
+  if (!namespaceId) return res.status(400).json({ error: 'namespaceId requerido' })
+  db.prepare('UPDATE agent_metadata SET kb_namespace_id=? WHERE bot_id=? AND workspace_id=?')
+    .run(namespaceId, botId, req.ariaUser.workspaceId)
+  res.json({ ok: true, namespaceId })
 })
 
 // Crear (o recuperar) el namespace de KB para un bot existente sin namespace
@@ -2106,9 +3350,16 @@ app.post('/api/agents/:botId/ensure-kb-namespace', requireAriaAuth, async (req, 
       headers: { 'Content-Type': 'application/json', Authorization: token },
       body: JSON.stringify({ name: `${botName} [${botId}]` }),
     })
-    if (!nsRes.ok) return res.status(nsRes.status).json({ error: 'Error creando namespace en Tiledesk' })
-    const nsData = await nsRes.json()
-    const namespaceId = nsData._id || nsData.id
+    let namespaceId
+    if (!nsRes.ok) {
+      const allNs = await fetch(`${TILEDESK_URL}/${projectId}/kb/namespace/all`, { headers: { Authorization: token } })
+        .then(r => r.json()).catch(() => [])
+      const def = (Array.isArray(allNs) ? allNs : []).find(n => n.default) || (Array.isArray(allNs) ? allNs[0] : null)
+      namespaceId = def?.id || def?._id || projectId
+    } else {
+      const nsData = await nsRes.json()
+      namespaceId = nsData._id || nsData.id
+    }
     db.prepare('UPDATE agent_metadata SET kb_namespace_id=? WHERE bot_id=? AND workspace_id=?')
       .run(namespaceId, botId, req.ariaUser.workspaceId)
     res.json({ namespaceId })
@@ -2125,70 +3376,75 @@ const AGENT_FILES_DIR = process.env.ARIA_DB_PATH
 // Guardar instrucciones + re-inyectar en Tiledesk (solo tilebots)
 app.put('/api/agents/:botId/instructions', requireAriaAuth, async (req, res) => {
   const { botId } = req.params
-  const { instructions, projectId, template_id } = req.body || {}
+  const { instructions, tone, nationality, company_name, company_description, derivation_notes } = req.body || {}
+  const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
+  if (!agent) return res.status(404).json({ error: 'Agente no encontrado' })
   try {
-    db.prepare(`INSERT OR IGNORE INTO agent_metadata (bot_id, workspace_id, template_id, updated_at)
-      VALUES (?, ?, ?, strftime('%s','now'))`)
-      .run(botId, req.ariaUser.workspaceId, template_id || null)
-    db.prepare(`UPDATE agent_metadata SET instructions=?, updated_at=strftime('%s','now') WHERE bot_id=? AND workspace_id=?`)
-      .run(instructions || null, botId, req.ariaUser.workspaceId)
-    const meta = db.prepare('SELECT bot_type FROM agent_metadata WHERE bot_id=?').get(botId)
-    const isExternal = (meta?.bot_type || 'tilebot') === 'external'
-    // Para tilebots: re-inyectar en el flow de Tiledesk
-    if (!isExternal && projectId && template_id) {
-      const token = await getTiledeskToken()
-      const flow  = loadFlow(template_id)
-      const modified = injectInstructions(flow, instructions, null)
-      await importFlowToBot(projectId, botId, modified, token)
-    }
+    await difyUpdateModelConfig(agent.dify_app_id, {
+      prePrompt:   instructions || '',
+      temperature: agent.temperature ?? 0.7,
+      topP:        agent.top_p ?? 1.0,
+    })
+    db.prepare(`UPDATE dify_agents SET system_prompt=?,
+      tone=COALESCE(?,tone), nationality=COALESCE(?,nationality),
+      company_name=COALESCE(?,company_name), company_description=COALESCE(?,company_description),
+      derivation_notes=COALESCE(?,derivation_notes)
+      WHERE id=? AND workspace_id=?`)
+      .run(instructions||null, tone||null, nationality||null, company_name||null,
+        company_description||null, derivation_notes||null, botId, req.ariaUser.workspaceId)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Guardar configuración técnica + re-inyectar en Tiledesk (solo tilebots)
 app.put('/api/agents/:botId/config', requireAriaAuth, async (req, res) => {
   const { botId } = req.params
-  const { temperature, top_p, channels, derivation_users, projectId, template_id } = req.body || {}
+  const { temperature, top_p, channels, derivation_users } = req.body || {}
+  const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
+  if (!agent) return res.status(404).json({ error: 'Agente no encontrado' })
   try {
-    db.prepare(`UPDATE agent_metadata SET temperature=?, top_p=?, channels=?, derivation_users=?, updated_at=strftime('%s','now')
-      WHERE bot_id=? AND workspace_id=?`)
-      .run(temperature ?? 1.0, top_p ?? 1.0,
-        JSON.stringify(channels || ['__all__']), JSON.stringify(derivation_users || ['__all__']),
+    const t  = parseFloat(temperature ?? agent.temperature ?? 0.7)
+    const tp = parseFloat(top_p ?? agent.top_p ?? 1.0)
+    await difyUpdateModelConfig(agent.dify_app_id, { prePrompt: agent.system_prompt || '', temperature: t, topP: tp })
+    db.prepare(`UPDATE dify_agents SET temperature=?, top_p=?, channels=?, derivation_users=? WHERE id=? AND workspace_id=?`)
+      .run(t, tp, JSON.stringify(channels || ['__all__']), JSON.stringify(derivation_users || ['__all__']),
         botId, req.ariaUser.workspaceId)
-    const meta = db.prepare('SELECT bot_type, instructions FROM agent_metadata WHERE bot_id=?').get(botId)
-    const isExternal = (meta?.bot_type || 'tilebot') === 'external'
-    // Para tilebots: re-inyectar temperature/top_p en el flow de Tiledesk
-    if (!isExternal && projectId && template_id) {
-      const token = await getTiledeskToken()
-      const flow  = loadFlow(template_id)
-      const modified = {
-        ...flow,
-        intents: (flow.intents || []).map(intent => ({
-          ...intent,
-          actions: (intent.actions || []).map(action =>
-            action._tdActionType === 'gpt_task'
-              ? { ...action, temperature: parseFloat(temperature ?? 1.0), context: meta?.instructions || action.context }
-              : action
-          ),
-        })),
-      }
-      await importFlowToBot(projectId, botId, modified, token)
-    }
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// Activar/desactivar bot
 app.put('/api/agents/:botId/active', requireAriaAuth, (req, res) => {
   const { active } = req.body || {}
-  db.prepare('UPDATE agent_metadata SET active=?, updated_at=strftime(%s,now) WHERE bot_id=? AND workspace_id=?')
+  db.prepare('UPDATE dify_agents SET active=? WHERE id=? AND workspace_id=?')
     .run(active ? 1 : 0, req.params.botId, req.ariaUser.workspaceId)
+  res.json({ ok: true })
+})
+
+app.delete('/api/agents/:botId', requireAriaAuth, async (req, res) => {
+  const { botId } = req.params
+  const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
+  if (!agent) return res.status(404).json({ error: 'Agente no encontrado' })
+  try {
+    await difyConsoleApi(`/apps/${agent.dify_app_id}`, 'DELETE')
+  } catch (e) {
+    console.warn('⚠ Dify delete app error (continúa):', e.message)
+  }
+  if (agent.dify_dataset_id) {
+    await difyServiceApi(`/datasets/${agent.dify_dataset_id}`, 'DELETE').catch(e =>
+      console.warn('⚠ Dify delete dataset error (continúa):', e.message)
+    )
+  }
+  // Limpiar archivos locales
+  const files = db.prepare('SELECT path FROM agent_files WHERE bot_id=?').all(botId)
+  for (const f of files) { try { if (existsSync(f.path)) unlinkSync(f.path) } catch {} }
+  db.prepare('DELETE FROM dify_agents WHERE id=? AND workspace_id=?').run(botId, req.ariaUser.workspaceId)
+  db.prepare('DELETE FROM agent_kb WHERE bot_id=?').run(botId)
+  db.prepare('DELETE FROM agent_files WHERE bot_id=?').run(botId)
   res.json({ ok: true })
 })
 
 // ── Agent files ───────────────────────────────────────────────────────────────
 app.get('/api/agents/:botId/files', requireAriaAuth, (req, res) => {
-  const files = db.prepare('SELECT id,filename,size,created_at FROM agent_files WHERE bot_id=? AND workspace_id=?')
+  const files = db.prepare('SELECT id,filename,size,dify_document_id,created_at FROM agent_files WHERE bot_id=? AND workspace_id=?')
     .all(req.params.botId, req.ariaUser.workspaceId)
   res.json(files)
 })
@@ -2197,10 +3453,23 @@ app.post('/api/agents/:botId/files', requireAriaAuth, async (req, res) => {
   const { botId } = req.params
   const wsId = req.ariaUser.workspaceId
   try {
-    const ALLOWED = ['.pdf','.doc','.docx','.pptx','.txt','.md','.json','.html']
-    const TEXT_READABLE = ['.txt','.md','.json','.html']
+    const ALLOWED = ['.pdf','.doc','.docx','.pptx','.txt','.md','.json','.html','.csv','.xlsx']
+    const MIME_MAP = {
+      '.pdf': 'application/pdf',
+      '.doc': 'application/msword',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.txt': 'text/plain',
+      '.md': 'text/markdown',
+      '.json': 'application/json',
+      '.html': 'text/html',
+      '.csv': 'text/csv',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }
     const existing = db.prepare('SELECT COUNT(*) as n FROM agent_files WHERE bot_id=? AND workspace_id=?').get(botId, wsId)
-    if (existing.n >= 3) return res.status(400).json({ error: 'Máximo 3 archivos por agente' })
+    if (existing.n >= 10) return res.status(400).json({ error: 'Máximo 10 archivos por agente' })
+
+    const agent = db.prepare('SELECT dify_dataset_id FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, wsId)
 
     const chunks = []
     for await (const chunk of req) chunks.push(chunk)
@@ -2223,50 +3492,68 @@ app.post('/api/agents/:botId/files', requireAriaAuth, async (req, res) => {
       const ext = extname(filename).toLowerCase()
       if (!ALLOWED.includes(ext)) continue
 
+      const fileBuf = Buffer.from(bodyStr, 'binary')
+      const size = fileBuf.length
+
+      // Guardar en disco (backup local)
       const fileId  = randomUUID()
       const dir     = join(AGENT_FILES_DIR, botId)
       mkdirSync(dir, { recursive: true })
       const filePath = join(dir, fileId + ext)
-      const fileBuf = Buffer.from(bodyStr, 'binary')
       writeFileSync(filePath, fileBuf)
-      const size = fileBuf.length
 
       db.prepare('INSERT INTO agent_files (id,bot_id,workspace_id,filename,size,path) VALUES (?,?,?,?,?,?)')
         .run(fileId, botId, wsId, filename, size, filePath)
 
-      // Extraer texto para KB (solo formatos legibles)
-      if (TEXT_READABLE.includes(ext)) {
+      // Subir a Dify dataset para RAG nativo
+      let difyDocumentId = null
+      if (agent?.dify_dataset_id) {
         try {
-          let text = fileBuf.toString('utf8')
-          if (ext === '.html') text = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-          if (text.length > 20000) text = text.slice(0, 20000) + '\n[... contenido truncado]'
-          db.prepare('INSERT INTO agent_kb (id,bot_id,workspace_id,type,title,content) VALUES (?,?,?,?,?,?)')
-            .run(randomUUID(), botId, wsId, 'file', filename, text)
-        } catch {}
+          const mimetype = MIME_MAP[ext] || 'application/octet-stream'
+          const uploadResp = await difyUploadFileToDataset(agent.dify_dataset_id, fileBuf, filename, mimetype)
+          const uploadData = await uploadResp.json()
+          difyDocumentId = uploadData.document?.id || uploadData.id || null
+          if (difyDocumentId) {
+            db.prepare('UPDATE agent_files SET dify_document_id=? WHERE id=?').run(difyDocumentId, fileId)
+            console.log(`📎 Archivo subido a Dify KB: ${filename} → doc ${difyDocumentId}`)
+          } else {
+            console.warn('⚠ Dify file upload no devolvió ID:', JSON.stringify(uploadData).slice(0, 200))
+          }
+        } catch (uErr) {
+          console.warn('⚠ Dify file upload error:', uErr.message)
+        }
       }
 
-      saved.push({ id: fileId, filename, size })
+      saved.push({ id: fileId, filename, size, difyDocumentId })
     }
     res.json(saved)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.delete('/api/agents/:botId/files/:fileId', requireAriaAuth, (req, res) => {
+app.delete('/api/agents/:botId/files/:fileId', requireAriaAuth, async (req, res) => {
   const { botId, fileId } = req.params
+  const wsId = req.ariaUser.workspaceId
   const file = db.prepare('SELECT * FROM agent_files WHERE id=? AND bot_id=? AND workspace_id=?')
-    .get(fileId, botId, req.ariaUser.workspaceId)
+    .get(fileId, botId, wsId)
   if (!file) return res.status(404).json({ error: 'Archivo no encontrado' })
-  try { if (existsSync(file.path)) unlinkSync(file.path) } catch {}
+  try {
+    // Borrar del disco
+    if (existsSync(file.path)) unlinkSync(file.path)
+    // Borrar de Dify dataset (service API)
+    if (file.dify_document_id) {
+      const agent = db.prepare('SELECT dify_dataset_id FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, wsId)
+      if (agent?.dify_dataset_id) {
+        await difyServiceApi(`/datasets/${agent.dify_dataset_id}/documents/${file.dify_document_id}`, 'DELETE').catch(() => {})
+      }
+    }
+  } catch {}
   db.prepare('DELETE FROM agent_files WHERE id=?').run(fileId)
-  // Eliminar también de KB si se había extraído texto
-  db.prepare("DELETE FROM agent_kb WHERE bot_id=? AND workspace_id=? AND type='file' AND title=?")
-    .run(botId, req.ariaUser.workspaceId, file.filename)
   res.json({ ok: true })
 })
 
 // ── Knowledge Base (KB) ───────────────────────────────────────────────────────
-// KB es por agente (bot_id). Se incluye en el system prompt del LLM al responder.
-// Tipos: 'text' (texto libre), 'faq' (pregunta/respuesta), 'url' (scraped), 'file' (auto desde upload)
+// KB es por agente (bot_id). Se almacena en Dify Knowledge Base (dataset) por RAG nativo.
+// Tipos: 'text' (texto libre), 'faq' (pregunta/respuesta), 'url' (scraped)
 
 app.get('/api/agents/:botId/kb', requireAriaAuth, (req, res) => {
   const rows = db.prepare(
@@ -2280,48 +3567,318 @@ app.post('/api/agents/:botId/kb', requireAriaAuth, async (req, res) => {
   const { type, title, content, url } = req.body || {}
   const wsId = req.ariaUser.workspaceId
   try {
+    const agent = db.prepare('SELECT dify_app_id, dify_dataset_id FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, wsId)
+
+    let finalContent = content?.trim() || ''
+    let finalTitle = title || url || 'Sin título'
+
     if (type === 'url') {
       if (!url) return res.status(400).json({ error: 'url requerida' })
       const fullUrl = url.startsWith('http') ? url : `https://${url}`
       const r = await fetch(fullUrl, { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': 'Mozilla/5.0' } })
       if (!r.ok) return res.status(400).json({ error: `No se pudo acceder a ${url}: ${r.status}` })
       let html = await r.text()
-      // Strip tags, scripts, styles
       html = html.replace(/<script[\s\S]*?<\/script>/gi, '')
         .replace(/<style[\s\S]*?<\/style>/gi, '')
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-      if (html.length > 15000) html = html.slice(0, 15000) + '\n[... contenido truncado]'
-      const id = randomUUID()
-      db.prepare('INSERT INTO agent_kb (id,bot_id,workspace_id,type,title,content) VALUES (?,?,?,?,?,?)')
-        .run(id, botId, wsId, 'url', title || url, html)
-      return res.json({ id, type: 'url', title: title || url, chars: html.length })
+      if (html.length > 10000) html = html.slice(0, 10000) + '\n[... contenido truncado]'
+      finalContent = html
+      finalTitle = title || url
+    } else {
+      if (!finalContent) return res.status(400).json({ error: 'content requerido' })
     }
 
-    if (!content?.trim()) return res.status(400).json({ error: 'content requerido' })
+    // 1. Guardar en ARIA DB
     const id = randomUUID()
     db.prepare('INSERT INTO agent_kb (id,bot_id,workspace_id,type,title,content) VALUES (?,?,?,?,?,?)')
-      .run(id, botId, wsId, type || 'text', title || null, content.trim())
-    res.json({ id, type: type || 'text', title: title || null, chars: content.trim().length })
+      .run(id, botId, wsId, type || 'text', finalTitle, finalContent)
+
+    // 2. Crear documento en Dify dataset (RAG nativo con Qdrant) — service API
+    let difyDocumentId = null
+    if (agent?.dify_dataset_id) {
+      try {
+        const docResp = await difyServiceApi(`/datasets/${agent.dify_dataset_id}/document/create-by-text`, 'POST', {
+          name: finalTitle,
+          text: finalContent,
+          indexing_technique: 'economy',
+          process_rule: { mode: 'automatic' },
+        })
+        const docData = await docResp.json()
+        difyDocumentId = docData.document?.id || docData.id || null
+        if (difyDocumentId) {
+          db.prepare('UPDATE agent_kb SET dify_document_id=? WHERE id=?').run(difyDocumentId, id)
+          console.log(`📚 KB documento creado en Dify: ${difyDocumentId}`)
+        } else {
+          console.warn('⚠ Dify KB document error:', JSON.stringify(docData).slice(0, 300))
+        }
+      } catch (dErr) {
+        console.warn('⚠ Dify KB document error:', dErr.message)
+      }
+    }
+
+    res.json({ id, type: type || 'text', title: finalTitle, chars: finalContent.length, difyDocumentId })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-app.delete('/api/agents/:botId/kb/:itemId', requireAriaAuth, (req, res) => {
+app.delete('/api/agents/:botId/kb/:itemId', requireAriaAuth, async (req, res) => {
   const { botId, itemId } = req.params
-  db.prepare('DELETE FROM agent_kb WHERE id=? AND bot_id=? AND workspace_id=?')
-    .run(itemId, botId, req.ariaUser.workspaceId)
-  res.json({ ok: true })
+  const wsId = req.ariaUser.workspaceId
+  try {
+    const item = db.prepare('SELECT dify_document_id FROM agent_kb WHERE id=? AND bot_id=?').get(itemId, botId)
+    // Borrar documento de Dify dataset (service API)
+    if (item?.dify_document_id) {
+      const agent = db.prepare('SELECT dify_dataset_id FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, wsId)
+      if (agent?.dify_dataset_id) {
+        await difyServiceApi(`/datasets/${agent.dify_dataset_id}/documents/${item.dify_document_id}`, 'DELETE').catch(() => {})
+      }
+    }
+    db.prepare('DELETE FROM agent_kb WHERE id=? AND bot_id=? AND workspace_id=?')
+      .run(itemId, botId, wsId)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// ── Bot Tools ─────────────────────────────────────────────────────────────────
+
+// Definición de tools para el LLM
+const BOT_TOOLS = [
+  {
+    name: 'get_contact',
+    description: 'Obtiene los datos del contacto actual: nombre, email, teléfono, empresa, etiquetas.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'update_contact',
+    description: 'Actualiza datos del contacto. Usalo cuando el usuario comparte su email, teléfono, empresa u otro dato.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        email:   { type: 'string', description: 'Email del contacto' },
+        phone:   { type: 'string', description: 'Teléfono del contacto' },
+        company: { type: 'string', description: 'Empresa del contacto' },
+        note:    { type: 'string', description: 'Nota libre sobre el contacto' },
+      },
+    },
+  },
+  {
+    name: 'set_funnel_stage',
+    description: 'Mueve el contacto a una etapa del embudo de ventas.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stage:       { type: 'string', description: 'ID de la etapa (ej: prospecto, calificado, propuesta, cerrado)' },
+        lead_status: { type: 'string', enum: ['open', 'won', 'lost'], description: 'Estado del lead' },
+      },
+      required: ['stage'],
+    },
+  },
+  {
+    name: 'create_task',
+    description: 'Crea una tarea de seguimiento para un agente humano.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title:       { type: 'string', description: 'Título de la tarea' },
+        description: { type: 'string', description: 'Descripción o contexto de la tarea' },
+        priority:    { type: 'string', enum: ['low', 'normal', 'high'], description: 'Prioridad' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'escalate_to_human',
+    description: 'Deriva la conversación a un agente humano. Usalo cuando el usuario lo pide, cuando no podés resolver el problema, o cuando detectás urgencia o frustración.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        reason: { type: 'string', description: 'Motivo de la derivación' },
+      },
+      required: ['reason'],
+    },
+  },
+]
+
+// Ejecuta una tool y devuelve el resultado como string
+async function executeTool(toolName, toolInput, context) {
+  const { projectId, requestId, leadId, workspaceId, token } = context
+  const tdToken = await getTiledeskToken()
+
+  if (toolName === 'get_contact') {
+    if (!leadId) return 'No se encontró información del contacto.'
+    const r = await fetch(`${TILEDESK_URL}/${projectId}/leads/${leadId}`, { headers: { Authorization: tdToken } })
+    if (!r.ok) return 'Error al obtener el contacto.'
+    const c = await r.json()
+    return JSON.stringify({ fullname: c.fullname, email: c.email, phone: c.phone, company: c.company, note: c.note, tags: c.tags })
+  }
+
+  if (toolName === 'update_contact') {
+    if (!leadId) return 'No se encontró el contacto para actualizar.'
+    const r = await fetch(`${TILEDESK_URL}/${projectId}/leads/${leadId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: tdToken },
+      body: JSON.stringify(toolInput),
+    })
+    return r.ok ? 'Contacto actualizado correctamente.' : 'Error al actualizar el contacto.'
+  }
+
+  if (toolName === 'set_funnel_stage') {
+    if (!leadId) return 'No se encontró el contacto.'
+    const { stage, lead_status = 'open' } = toolInput
+    try {
+      db.prepare('INSERT OR REPLACE INTO funnel_stages (workspace_id, lead_id, stage, lead_status) VALUES (?,?,?,?)')
+        .run(workspaceId, leadId, stage, lead_status)
+      return `Contacto movido a etapa "${stage}".`
+    } catch { return 'Error al mover el contacto en el embudo.' }
+  }
+
+  if (toolName === 'create_task') {
+    const { title, description, priority = 'normal' } = toolInput
+    try {
+      db.prepare('INSERT INTO tasks (id,workspace_id,title,description,lead_id,priority,status) VALUES (?,?,?,?,?,?,?)')
+        .run(randomUUID(), workspaceId, title, description || null, leadId || null, priority, 'pending')
+      return `Tarea "${title}" creada.`
+    } catch { return 'Error al crear la tarea.' }
+  }
+
+  if (toolName === 'escalate_to_human') {
+    const { reason } = toolInput
+    // Cerrar el bot de la conversación para que pase a un humano
+    await fetch(`${TILEDESK_URL}/${projectId}/requests/${requestId}/participants/bot_${context.botId}`, {
+      method: 'DELETE', headers: { Authorization: tdToken },
+    }).catch(() => {})
+    return `Derivado a agente humano. Motivo: ${reason}`
+  }
+
+  return 'Tool desconocida.'
+}
+
+// callLLM con soporte de tools (agentic loop: hasta 5 rondas de tool calls)
+async function callLLMWithTools({ system, messages, workspaceId, projectId, requestId, leadId, botId }) {
+  const MAX_ROUNDS = 5
+  let cs = null
+  if (workspaceId) cs = db.prepare('SELECT llm_provider, llm_api_key, llm_model FROM channel_settings WHERE workspace_id=?').get(workspaceId)
+
+  let provider = cs?.llm_api_key ? (cs.llm_provider || 'openai') : null
+  let apiKey   = cs?.llm_api_key || null
+  let model    = cs?.llm_model   || null
+
+  if (!apiKey) {
+    if (process.env.OPENAI_API_KEY)       { provider = 'openai';    apiKey = process.env.OPENAI_API_KEY;    model = model || 'gpt-4o-mini' }
+    else if (process.env.ANTHROPIC_API_KEY) { provider = 'anthropic'; apiKey = process.env.ANTHROPIC_API_KEY; model = model || 'claude-haiku-4-5-20251001' }
+  }
+  if (!apiKey) throw new Error('No hay API key configurada')
+
+  // Dify: delegar a callLLM directo (Dify gestiona el historial internamente)
+  if (provider === 'dify') {
+    // Leer dify_conversation_id desde cache en memoria, luego desde DB
+    let difyConvId = requestId ? extDifyConvId.get(requestId) : undefined
+    if (!difyConvId && requestId) {
+      const row = db.prepare('SELECT dify_conversation_id FROM wa_conversations WHERE request_id=? LIMIT 1').get(requestId)
+      if (row?.dify_conversation_id) difyConvId = row.dify_conversation_id
+    }
+    const result = await callLLM({ system, messages, workspaceId, difyConversationId: difyConvId })
+    if (requestId && result.difyConversationId) {
+      extDifyConvId.set(requestId, result.difyConversationId)
+      db.prepare('UPDATE wa_conversations SET dify_conversation_id=? WHERE request_id=?')
+        .run(result.difyConversationId, requestId)
+    }
+    return result
+  }
+
+  const workspace = workspaceId ? db.prepare('SELECT tiledesk_project_id FROM workspaces WHERE id=?').get(workspaceId) : null
+
+  const toolContext = { projectId, requestId, leadId, workspaceId, botId }
+
+  let currentMessages = [...messages]
+  let totalUsage = { input_tokens: 0, output_tokens: 0 }
+  let finalText = ''
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    let resp, d
+
+    if (provider === 'anthropic') {
+      // Convertir tools al formato Anthropic
+      const anthropicTools = BOT_TOOLS.map(t => ({
+        name: t.name, description: t.description, input_schema: t.input_schema,
+      }))
+      resp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 1024, system, messages: currentMessages, tools: anthropicTools }),
+      })
+      d = await resp.json()
+      if (d.error) throw new Error(d.error.message || JSON.stringify(d.error))
+      totalUsage.input_tokens  += d.usage?.input_tokens  || 0
+      totalUsage.output_tokens += d.usage?.output_tokens || 0
+
+      const toolUses = d.content?.filter(b => b.type === 'tool_use') || []
+      const textBlocks = d.content?.filter(b => b.type === 'text').map(b => b.text).join('') || ''
+
+      if (toolUses.length === 0 || d.stop_reason === 'end_turn') {
+        finalText = textBlocks
+        break
+      }
+
+      // Agregar respuesta del asistente con tool_use
+      currentMessages.push({ role: 'assistant', content: d.content })
+
+      // Ejecutar tools y agregar resultados
+      const toolResults = []
+      for (const tu of toolUses) {
+        console.log(`🔧 tool: ${tu.name}`, JSON.stringify(tu.input).slice(0, 100))
+        const result = await executeTool(tu.name, tu.input, toolContext)
+        console.log(`✓ tool result: ${result.slice(0, 100)}`)
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
+      }
+      currentMessages.push({ role: 'user', content: toolResults })
+
+    } else {
+      // OpenAI format
+      const openaiTools = BOT_TOOLS.map(t => ({
+        type: 'function',
+        function: { name: t.name, description: t.description, parameters: t.input_schema },
+      }))
+      const msgs = system ? [{ role: 'system', content: system }, ...currentMessages] : currentMessages
+      resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 1024, messages: msgs, tools: openaiTools, tool_choice: 'auto' }),
+      })
+      d = await resp.json()
+      if (d.error) throw new Error(d.error.message || JSON.stringify(d.error))
+      totalUsage.input_tokens  += d.usage?.prompt_tokens     || 0
+      totalUsage.output_tokens += d.usage?.completion_tokens || 0
+
+      const msg = d.choices?.[0]?.message
+      const toolCalls = msg?.tool_calls || []
+
+      if (toolCalls.length === 0 || d.choices?.[0]?.finish_reason === 'stop') {
+        finalText = msg?.content?.trim() || ''
+        break
+      }
+
+      currentMessages.push(msg)
+      for (const tc of toolCalls) {
+        let args = {}
+        try { args = JSON.parse(tc.function.arguments) } catch {}
+        console.log(`🔧 tool: ${tc.function.name}`, JSON.stringify(args).slice(0, 100))
+        const result = await executeTool(tc.function.name, args, toolContext)
+        console.log(`✓ tool result: ${result.slice(0, 100)}`)
+        currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
+      }
+    }
+  }
+
+  return { text: finalText, model, usage: totalUsage }
+}
+
 // ── External Bot Webhook (Tiledesk → ARIA → LLM → Tiledesk) ──────────────────
-// Tiledesk llama a este endpoint cuando un usuario envía un mensaje en una conv con bot externo.
-// Protocolo: Tiledesk POST {payload:{text,request,id_project,attributes}, token, hook}
-// ARIA responde 200 inmediatamente, llama al LLM y postea la respuesta de vuelta.
-const extBotHistory = new Map()  // requestId → [{role, content}]
+const extBotHistory  = new Map()  // requestId → [{role, content}]
+const extDifyConvId  = new Map()  // requestId → dify conversation_id
 
 app.post('/api/bot-webhook', async (req, res) => {
-  res.json({ success: true })  // responder antes de cualquier await
+  res.json({ success: true })
 
   try {
     const { payload, token, hook } = req.body || {}
@@ -2335,79 +3892,85 @@ app.post('/api/bot-webhook', async (req, res) => {
 
     console.log(`🤖 bot-webhook: action=${action} | requestId=...${requestId?.slice(-8)} | text=${text?.slice(0, 50)}`)
 
-    if (!projectId || !requestId || !token) {
-      return console.log('⚠ bot-webhook: faltan campos requeridos')
+    if (!projectId || !requestId || !token) return console.log('⚠ bot-webhook: faltan campos requeridos')
+
+    if (action === 'start') {
+      extBotHistory.delete(requestId)
+      extDifyConvId.delete(requestId)
+      db.prepare('UPDATE wa_conversations SET dify_conversation_id=NULL WHERE request_id=?').run(requestId)
     }
-
-    // Limpiar historial al iniciar nueva conversación
-    if (action === 'start') extBotHistory.delete(requestId)
-
-    // No procesar si no hay texto (ej: acción "close")
     if (!text) return
 
     if (!extBotHistory.has(requestId)) extBotHistory.set(requestId, [])
     const history = extBotHistory.get(requestId)
     history.push({ role: 'user', content: text })
 
-    // Instrucciones del bot
     const meta = db.prepare('SELECT instructions, workspace_id FROM agent_metadata WHERE bot_id=?').get(botId)
     const baseInstructions = meta?.instructions?.trim() ||
       'Sos un asistente virtual amable y conciso. Respondé siempre en el mismo idioma que el usuario.'
 
-    // KB del namespace exclusivo del bot
+    // Obtener leadId de la conversación en Tiledesk
+    let leadId = null
+    try {
+      const tdToken = await getTiledeskToken()
+      const reqData = await fetch(`${TILEDESK_URL}/${projectId}/requests/${requestId}`, { headers: { Authorization: tdToken } })
+        .then(r => r.json()).catch(() => null)
+      leadId = reqData?.lead?._id || reqData?.lead_id || null
+    } catch {}
+
+    // KB del bot desde ARIA DB (aislada por bot_id)
     let kbBlock = ''
     try {
-      const nsId = db.prepare('SELECT kb_namespace_id FROM agent_metadata WHERE bot_id=?').get(botId)?.kb_namespace_id
-      const workspace = meta?.workspace_id
-        ? db.prepare('SELECT tiledesk_project_id FROM workspaces WHERE id=?').get(meta.workspace_id)
-        : null
-      const tdProjectId = workspace?.tiledesk_project_id
-      if (tdProjectId && nsId) {
-        const tdToken = await getTiledeskToken()
-        const kbRes   = await fetch(`${TILEDESK_URL}/${tdProjectId}/kb/?namespace=${nsId}&direction=-1&sortField=updatedAt&limit=100`, {
-          headers: { Authorization: tdToken }
-        })
-        if (kbRes.ok) {
-          const kbData = await kbRes.json().catch(() => null)
-          const items  = Array.isArray(kbData?.kbs) ? kbData.kbs.filter(i => i.status === 300) : []
-          if (items.length > 0) {
-            const sections = items.map(item => {
-              if (item.type === 'faq') return `P: ${item.name}\nR: ${item.content}`
-              const label = item.name ? `[${item.name}]` : `[${item.type}]`
-              return `${label}\n${item.content?.slice(0, 600) || ''}`
-            })
-            kbBlock = `\n\n## BASE DE CONOCIMIENTO\nUsá esta información para responder preguntas del usuario:\n\n${sections.join('\n\n---\n\n')}`
-          }
+      if (meta?.workspace_id) {
+        const items = db.prepare('SELECT type, title, content FROM agent_kb WHERE bot_id=? AND workspace_id=? ORDER BY created_at DESC LIMIT 100')
+          .all(botId, meta.workspace_id)
+        if (items.length > 0) {
+          const sections = items.map(item => {
+            if (item.type === 'faq') return `P: ${item.title}\nR: ${item.content}`
+            return `[${item.title || item.type}]\n${item.content?.slice(0, 600) || ''}`
+          })
+          kbBlock = `\n\n## BASE DE CONOCIMIENTO\nUsá esta información para responder preguntas del usuario:\n\n${sections.join('\n\n---\n\n')}`
         }
       }
     } catch (kbErr) { console.error('⚠ bot-webhook: error leyendo KB', kbErr.message) }
 
     const systemPrompt = baseInstructions + kbBlock
 
-    const { text: reply, model: llmModel, usage: llmUsage } = await callLLM({
-      workspaceId: meta?.workspace_id,
+    const { text: reply, model: llmModel, usage: llmUsage } = await callLLMWithTools({
       system: systemPrompt,
       messages: history,
-      max_tokens: 512,
+      workspaceId: meta?.workspace_id,
+      projectId,
+      requestId,
+      leadId,
+      botId,
     }).catch(e => { console.error('⚠ bot-webhook: LLM error', e.message); return {} })
+
     if (!reply) return
     trackLlmUsage(meta?.workspace_id || 'unknown', 'bot-webhook', llmModel, llmUsage)
 
-    history.push({ role: 'assistant', content: reply })
-    // Limitar historial a 20 turnos para no crecer indefinidamente
+    // Detectar HANDOFF
+    let finalReply = reply
+    if (reply.includes('[HANDOFF]')) {
+      finalReply = reply.replace(/\[HANDOFF\]/g, '').trim() || 'Un momento, te conecto con un asesor.'
+      db.prepare("UPDATE wa_conversations SET bot_mode='human', updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
+      extDifyConvId.delete(requestId)
+      extBotHistory.delete(requestId)
+      console.log(`👤 HANDOFF → modo humano activado | requestId=...${requestId.slice(-8)}`)
+    }
+
+    history.push({ role: 'assistant', content: finalReply })
     if (history.length > 20) history.splice(0, history.length - 20)
 
-    // Postear respuesta a Tiledesk usando el token del bot
     const tdReply = await fetch(`${TILEDESK_URL}/${projectId}/requests/${requestId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: token },
-      body: JSON.stringify({ text: reply, sender: botId, senderFullname: botName }),
+      body: JSON.stringify({ text: finalReply, sender: botId, senderFullname: botName }),
     })
     if (!tdReply.ok) {
-      const errBody = await tdReply.text().catch(() => '')
-      console.error(`⚠ bot-webhook reply error: ${tdReply.status} | ${errBody.slice(0, 200)}`)
+      console.error(`⚠ bot-webhook reply error: ${tdReply.status}`)
     } else {
-      console.log(`✓ bot-webhook → Tiledesk: ${tdReply.status} | requestId=...${requestId.slice(-8)}`)
+      console.log(`✓ bot-webhook → reply ok | requestId=...${requestId.slice(-8)}`)
     }
   } catch (e) {
     console.error('⚠ bot-webhook error:', e.message, e.stack?.split('\n')[1])
@@ -2421,17 +3984,5 @@ app.get('*', (_, res) => res.sendFile(join(DIST, 'index.html')))
 
 app.listen(PORT, () => {
   console.log(`ARIA corriendo en :${PORT}`)
-  // Registrar webhook de Tiledesk para todos los workspaces activos
-  setTimeout(() => {
-    try {
-      const workspaces = db.prepare('SELECT * FROM workspaces WHERE tiledesk_project_id IS NOT NULL').all()
-      for (const ws of workspaces) {
-        registerTiledeskWebhook(ws.tiledesk_project_id).catch(e =>
-          console.error(`⚠ Webhook registro (${ws.tiledesk_project_id}):`, e.message)
-        )
-      }
-    } catch (e) {
-      console.error('⚠ Error registrando webhooks al arrancar:', e.message)
-    }
-  }, 5000) // esperar 5s a que el servidor esté listo
+  // Tiledesk deshabilitado — no registrar webhooks al arrancar
 })
