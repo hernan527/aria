@@ -8,7 +8,7 @@ import {
   Check, Plus, X, Upload, FileText, Trash2, ChevronRight,
   Zap, Shield, Star, RefreshCw, Wifi, WifiOff, QrCode,
   Settings2, Key, Link, Unlink, UserPlus, Crown, ChevronDown,
-  Copy, CheckCircle, Loader2, ExternalLink,
+  Copy, CheckCircle, Loader2, ExternalLink, Pencil,
 } from 'lucide-react'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -395,9 +395,52 @@ function HubSpotSection() {
   )
 }
 
+function LucasSection() {
+  const [enabled, setEnabled] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving,  setSaving]  = useState(false)
+
+  useEffect(() => {
+    api.getAiScoringSettings().then(r => setEnabled(!!r?.enabled)).catch(() => {}).finally(() => setLoading(false))
+  }, [])
+
+  async function toggle() {
+    const next = !enabled
+    setSaving(true)
+    try {
+      await api.setAiScoringEnabled(next)
+      setEnabled(next)
+    } catch (e) { alert(e.message) }
+    setSaving(false)
+  }
+
+  return (
+    <div className="p-4 rounded-xl border border-white/8 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-indigo-400 flex items-center gap-1.5">
+          <Zap size={11}/>Lucas — Análisis de Leads con IA
+        </p>
+        <button
+          onClick={toggle}
+          disabled={loading || saving}
+          className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${enabled ? 'bg-indigo-500' : 'bg-white/10'} disabled:opacity-40`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${enabled ? 'translate-x-4' : ''}`} />
+        </button>
+      </div>
+      <p className="text-[11px] text-white/30">
+        Lucas lee en silencio cada conversación de WhatsApp cuando se cierra y actualiza el CRM solo:
+        mueve la etapa del embudo, marca ganado/perdido, completa datos del contacto, deja una nota
+        resumen y sugiere tareas de seguimiento. Los resultados se ven en el Dashboard y en Funnels.
+      </p>
+    </div>
+  )
+}
+
 function TabCanales() {
   const [settings,   setSettings]   = useState({})
   const [instances,  setInstances]  = useState([])
+  const [agents,     setAgents]     = useState([])
   const [loading,    setLoading]    = useState(true)
   const [saving,     setSaving]     = useState(false)
   const [saved,      setSaved]      = useState(false)
@@ -408,9 +451,10 @@ function TabCanales() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [s, i] = await Promise.all([api.getChannelSettings(), api.getChannelInstances()])
+      const [s, i, a] = await Promise.all([api.getChannelSettings(), api.getChannelInstances(), api.getAgentMetadata()])
       setSettings(s || {})
       setInstances(i || [])
+      setAgents(Array.isArray(a) ? a : [])
     } catch {}
     setLoading(false)
   }, [])
@@ -525,6 +569,22 @@ function TabCanales() {
                       </div>
                     </div>
 
+                    <select
+                      value={inst.bot_id || ''}
+                      onChange={async e => {
+                        const botId = e.target.value || null
+                        setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, bot_id: botId } : i))
+                        try { await api.setInstanceBot(inst.id, botId) } catch {}
+                      }}
+                      className="text-[11px] bg-[#1a1a2e] text-white/70 border border-white/10 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-500/50 max-w-[160px] shrink-0"
+                      title="Agente asignado a este canal"
+                    >
+                      <option value="">Agente global</option>
+                      {agents.map(a => (
+                        <option key={a.bot_id} value={a.bot_id}>{a.name || 'Sin nombre'}</option>
+                      ))}
+                    </select>
+
                     <div className="flex items-center gap-1 shrink-0">
                       <button
                         onClick={() => setShowQR(inst)}
@@ -636,6 +696,9 @@ function TabCanales() {
               <input {...field('kanban_url')} placeholder="https://kanban.tudominio.com" className="w-full bg-white/5 border border-white/8 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-indigo-500/50 placeholder-white/20" />
             </div>
           </div>
+
+          {/* Lucas — agente calificador */}
+          <LucasSection />
 
           {/* HubSpot */}
           <HubSpotSection />
@@ -860,21 +923,6 @@ function TabCopilot() {
 
 // ── Plan ──────────────────────────────────────────────────────────────────────
 
-const PLANS = [
-  {
-    id: 'starter', name: 'Starter', price: 59, desc: 'Perfecto para pequeños negocios',
-    features: ['1.500 mensajes de AI', '1 Agente AI', '1 Número de WhatsApp', 'Hasta 2 usuarios', '1 Embudo de ventas', 'Autoservicio'],
-  },
-  {
-    id: 'growth', name: 'Growth', price: 199, desc: 'Para equipos en crecimiento', current: true,
-    features: ['4.000 mensajes de AI', 'Agentes ilimitados', '3 Números de WhatsApp', 'Hasta 10 usuarios', 'Embudos ilimitados', 'Smart tags', 'Copilot comercial', 'Soporte prioritario'],
-  },
-  {
-    id: 'pro', name: 'Pro', price: 299, desc: 'Solución empresarial completa',
-    features: ['10.000 mensajes de AI', 'Agentes ilimitados', '10 Números de WhatsApp', 'Usuarios ilimitados', 'Embudos ilimitados', 'Smart tags', 'Copilot comercial', 'Soporte prioritario'],
-  },
-]
-
 const MODELS = {
   openai:    ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
   anthropic: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5', 'claude-opus-4-7'],
@@ -894,7 +942,38 @@ const COSTS = {
 function TabPlan() {
   const { user } = useAuth()
   const isOwner = user?.role === 'owner'
-  const current = PLANS.find(p => p.current)
+
+  const [billing,     setBilling]     = useState(null)
+  const [checkingOut, setCheckingOut] = useState(null)
+  const [adminPlans,  setAdminPlans]  = useState(null)   // null = no autorizado o cargando
+  const [savingPlanId,setSavingPlanId]= useState(null)
+
+  useEffect(() => {
+    api.getBillingStatus().then(setBilling).catch(() => {})
+    api.getAdminPlans().then(setAdminPlans).catch(() => {})   // 403 silencioso si no es admin
+  }, [])
+
+  function updateAdminPlanField(id, field, value) {
+    setAdminPlans(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p))
+  }
+
+  async function saveAdminPlan(plan) {
+    setSavingPlanId(plan.id)
+    try {
+      await api.updateAdminPlan(plan.id, plan)
+      api.getBillingStatus().then(setBilling).catch(() => {})
+    } catch (e) { alert(e.message) }
+    setSavingPlanId(null)
+  }
+
+  async function handleCheckout(planId) {
+    setCheckingOut(planId)
+    try {
+      const { init_point } = await api.checkoutPlan(planId)
+      if (init_point) window.location.href = init_point
+    } catch (e) { alert(e.message) }
+    setCheckingOut(null)
+  }
 
   // LLM config
   const [llmCfg,    setLlmCfg]    = useState(null)
@@ -1062,38 +1141,101 @@ function TabPlan() {
         )}
       </div>
 
+      {/* Uso actual vs límites del plan */}
+      {billing && (
+        <div>
+          <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">
+            Uso este mes — Plan {billing.plan?.name} {billing.planStatus !== 'active' && `(${billing.planStatus})`}
+          </p>
+          <div className="grid grid-cols-5 gap-2">
+            {[
+              { label: 'Créditos AI', used: billing.messagesUsed, max: billing.plan?.ai_credits_month, over: billing.messagesLimitReached },
+              { label: 'Agentes',     used: billing.agentsUsed,   max: billing.plan?.max_agents,          over: billing.agentsLimitReached },
+              { label: 'WhatsApp',    used: billing.whatsappUsed, max: billing.plan?.max_whatsapp_numbers,over: billing.whatsappLimitReached },
+              { label: 'Usuarios',    used: billing.usersUsed,    max: billing.plan?.max_users,           over: billing.usersLimitReached },
+              { label: 'Embudos',     used: billing.funnelsUsed,  max: billing.plan?.max_funnels,         over: billing.funnelsLimitReached },
+            ].map(s => (
+              <div key={s.label} className={`px-3 py-2.5 rounded-xl border text-center ${s.over ? 'border-red-500/40 bg-red-500/10' : 'border-white/8 bg-white/4'}`}>
+                <p className={`text-sm font-bold ${s.over ? 'text-red-400' : 'text-white'}`}>{s.used}{s.max != null ? `/${s.max}` : ''}</p>
+                <p className="text-[10px] text-white/40 mt-0.5">{s.label}</p>
+              </div>
+            ))}
+          </div>
+          {(billing.messagesLimitReached || billing.agentsLimitReached) && (
+            <p className="text-xs text-red-400 mt-2">
+              Llegaste al límite de tu plan — actualizá abajo para seguir sin cortes.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Planes */}
       <div>
         <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Planes Disponibles</p>
         <div className="grid grid-cols-3 gap-3">
-          {PLANS.map(plan => (
-            <div key={plan.id}
-              className={`relative flex flex-col p-4 rounded-2xl border transition-colors ${plan.current ? 'border-aria-500/50 bg-aria-500/10' : 'border-white/8 bg-surface-50 hover:border-white/15'}`}>
-              {plan.current && (
-                <div className="absolute -top-px left-1/2 -translate-x-1/2">
-                  <span className="text-[10px] font-semibold px-2.5 py-0.5 bg-aria-500 text-white rounded-b-lg">Plan Actual</span>
-                </div>
-              )}
-              <p className="text-xs text-white/40 mt-2 mb-0.5">{plan.desc}</p>
-              <p className="text-lg font-bold text-white">{plan.name}</p>
-              <p className="text-2xl font-bold text-white mb-3">${plan.price}<span className="text-xs font-normal text-white/40">/mes</span></p>
-              <ul className="space-y-1.5 flex-1 mb-4">
-                {plan.features.map((f, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-xs text-white/60">
-                    <Check className="w-3 h-3 text-aria-400 shrink-0 mt-0.5" />{f}
-                  </li>
-                ))}
-              </ul>
-              <button
-                className={`w-full py-2 rounded-xl text-xs font-semibold transition-colors ${plan.current ? 'bg-aria-500/20 text-aria-300 cursor-default' : 'bg-aria-500 hover:bg-aria-600 text-white'}`}
-                disabled={plan.current}
-              >
-                {plan.current ? 'Activar plan' : 'Suscribirse'}
-              </button>
-            </div>
-          ))}
+          {(billing?.allPlans || []).map(plan => {
+            const isCurrent = plan.id === billing?.plan?.id
+            return (
+              <div key={plan.id}
+                className={`relative flex flex-col p-4 rounded-2xl border transition-colors ${isCurrent ? 'border-aria-500/50 bg-aria-500/10' : 'border-white/8 bg-surface-50 hover:border-white/15'}`}>
+                {isCurrent && (
+                  <div className="absolute -top-px left-1/2 -translate-x-1/2">
+                    <span className="text-[10px] font-semibold px-2.5 py-0.5 bg-aria-500 text-white rounded-b-lg">Plan Actual</span>
+                  </div>
+                )}
+                <p className="text-lg font-bold text-white mt-2">{plan.name}</p>
+                <p className="text-2xl font-bold text-white mb-3">${plan.price_ars}<span className="text-xs font-normal text-white/40">/mes</span></p>
+                <ul className="space-y-1.5 flex-1 mb-4">
+                  <li className="flex items-start gap-1.5 text-xs text-white/60"><Check className="w-3 h-3 text-aria-400 shrink-0 mt-0.5" />{plan.ai_credits_month.toLocaleString()} créditos AI / mes</li>
+                  <li className="flex items-start gap-1.5 text-xs text-white/60"><Check className="w-3 h-3 text-aria-400 shrink-0 mt-0.5" />{plan.max_whatsapp_numbers ?? '∞'} número{plan.max_whatsapp_numbers === 1 ? '' : 's'} de WhatsApp</li>
+                  <li className="flex items-start gap-1.5 text-xs text-white/60"><Check className="w-3 h-3 text-aria-400 shrink-0 mt-0.5" />Hasta {plan.max_users ?? '∞'} usuarios</li>
+                  <li className="flex items-start gap-1.5 text-xs text-white/60"><Check className="w-3 h-3 text-aria-400 shrink-0 mt-0.5" />{plan.max_agents ?? 'Agentes ilimitados'}{plan.max_agents != null && (plan.max_agents === 1 ? ' Agente AI' : ' Agentes AI')}</li>
+                  <li className="flex items-start gap-1.5 text-xs text-white/60"><Check className="w-3 h-3 text-aria-400 shrink-0 mt-0.5" />{plan.max_funnels ?? 'Embudos ilimitados'}{plan.max_funnels != null && (plan.max_funnels === 1 ? ' Embudo' : ' Embudos')}</li>
+                  <li className="flex items-start gap-1.5 text-xs text-white/60"><Check className="w-3 h-3 text-aria-400 shrink-0 mt-0.5" />Soporte: {plan.support_tier === 'whatsapp' ? 'WhatsApp' : 'Email'}</li>
+                </ul>
+                <button
+                  onClick={() => !isCurrent && isOwner && handleCheckout(plan.id)}
+                  className={`w-full py-2 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 ${isCurrent ? 'bg-aria-500/20 text-aria-300 cursor-default' : 'bg-aria-500 hover:bg-aria-600 text-white disabled:opacity-50'}`}
+                  disabled={isCurrent || checkingOut === plan.id || !isOwner}
+                >
+                  {checkingOut === plan.id ? <Loader2 size={13} className="animate-spin" /> : null}
+                  {isCurrent ? 'Plan actual' : 'Suscribirse'}
+                </button>
+              </div>
+            )
+          })}
         </div>
       </div>
+
+      {/* Admin de planes — solo visible si el backend autoriza (email admin de la plataforma) */}
+      {Array.isArray(adminPlans) && (
+        <div>
+          <p className="text-xs font-semibold text-amber-400/70 uppercase tracking-wider mb-3">
+            Admin — editar planes (afecta a todos los workspaces)
+          </p>
+          <div className="rounded-xl border border-white/8 overflow-hidden overflow-x-auto">
+            <div className="grid grid-cols-8 gap-2 px-3 py-2 bg-white/4 text-[10px] font-medium text-white/40 min-w-[760px]">
+              <span>Plan</span><span>$/mes</span><span>Créditos</span><span>WhatsApp</span>
+              <span>Usuarios</span><span>Agentes</span><span>Embudos</span><span></span>
+            </div>
+            {adminPlans.map(p => (
+              <div key={p.id} className="grid grid-cols-8 gap-2 px-3 py-2 border-t border-white/6 items-center min-w-[760px]">
+                <span className="text-xs text-white/70">{p.name}</span>
+                {['price_ars', 'ai_credits_month', 'max_whatsapp_numbers', 'max_users', 'max_agents', 'max_funnels'].map(field => (
+                  <input key={field} type="number" value={p[field] ?? ''}
+                    placeholder={field.startsWith('max_') ? '∞' : ''}
+                    onChange={e => updateAdminPlanField(p.id, field, e.target.value === '' ? null : Number(e.target.value))}
+                    className="w-full bg-[#1a1a2e] text-white text-xs px-2 py-1.5 rounded-lg border border-white/10 outline-none focus:border-aria-500" />
+                ))}
+                <button onClick={() => saveAdminPlan(p)} disabled={savingPlanId === p.id}
+                  className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-aria-500 hover:bg-aria-600 text-white text-[11px] disabled:opacity-50">
+                  {savingPlanId === p.id ? <Loader2 size={11} className="animate-spin" /> : 'Guardar'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1320,12 +1462,81 @@ function InviteModal({ onClose, onDone }) {
   )
 }
 
-function TeamModal({ members, onClose, onDone }) {
+function MemberEditModal({ member, onClose, onDone }) {
+  const [name, setName]     = useState(member.name || '')
+  const [role, setRole]     = useState(member.role === 'admin' ? 'admin' : 'member')
+  const [active, setActive] = useState(member.active !== 0)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit() {
+    setSaving(true)
+    try {
+      await api.updateMember(member.id, { name: name.trim(), role, active })
+      onDone?.()
+      onClose()
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="bg-surface-50 border border-white/10 rounded-2xl shadow-2xl w-[420px] max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-6 pb-4 border-b border-white/8 shrink-0">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-base font-semibold text-white">Editar Vendedor</h3>
+            <button onClick={onClose} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors"><X className="w-4 h-4 text-white/40" /></button>
+          </div>
+          <p className="text-xs text-white/40">{member.email}</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-white/50 mb-1.5">Nombre</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nombre del vendedor"
+              className="w-full bg-surface rounded-xl border border-white/10 text-white text-sm px-3.5 py-2.5 outline-none focus:border-aria-500 transition-colors placeholder:text-white/20" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-white/50 mb-1.5">Rol</label>
+            <div className="flex gap-2">
+              {[{ id: 'member', label: 'Vendedor' }, { id: 'admin', label: 'Administrador' }].map(r => (
+                <button key={r.id} type="button" onClick={() => setRole(r.id)}
+                  className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border transition-colors ${role === r.id ? 'bg-aria-500/15 border-aria-500/40 text-aria-300' : 'border-white/10 text-white/50 hover:text-white'}`}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between bg-surface rounded-xl border border-white/10 px-3.5 py-3">
+            <div>
+              <p className="text-sm text-white font-medium">Estado</p>
+              <p className="text-xs text-white/40">Un vendedor inactivo no puede iniciar sesión</p>
+            </div>
+            <button type="button" onClick={() => setActive(a => !a)}
+              className={`relative w-10 h-6 rounded-full transition-colors shrink-0 ${active ? 'bg-emerald-500' : 'bg-white/15'}`}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${active ? 'translate-x-4' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-white/8 flex items-center justify-end gap-3 shrink-0">
+          <button type="button" onClick={onClose} className="btn-ghost">Cancelar</button>
+          <button type="button" onClick={handleSubmit} disabled={saving || !name.trim()}
+            className="flex items-center gap-2 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            Guardar cambios
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TeamModal({ members, team, onClose, onDone }) {
   const [tab, setTab]           = useState('info')
-  const [name, setName]         = useState('')
-  const [desc, setDesc]         = useState('')
-  const [leaderId, setLeaderId] = useState('')
-  const [selected, setSelected] = useState(new Set())
+  const [name, setName]         = useState(team?.name || '')
+  const [desc, setDesc]         = useState(team?.description || '')
+  const [leaderId, setLeaderId] = useState(team?.leader_id || '')
+  const [selected, setSelected] = useState(new Set(team?.members?.map(m => m.id) || []))
   const [saving, setSaving]     = useState(false)
 
   const leaderName = members.find(m => m.id === leaderId)?.name || ''
@@ -1338,7 +1549,9 @@ function TeamModal({ members, onClose, onDone }) {
     if (!name.trim()) return
     setSaving(true)
     try {
-      await api.createTeam({ name: name.trim(), description: desc, leader_id: leaderId || null, leader_name: leaderName || null, member_ids: [...selected] })
+      const payload = { name: name.trim(), description: desc, leader_id: leaderId || null, leader_name: leaderName || null, member_ids: [...selected] }
+      if (team) await api.updateTeam(team.id, payload)
+      else      await api.createTeam(payload)
       onDone?.()
       onClose()
     } catch (err) { alert(err.message) }
@@ -1351,7 +1564,7 @@ function TeamModal({ members, onClose, onDone }) {
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-white/8 shrink-0">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="text-base font-semibold text-white">Crear Nuevo Equipo</h3>
+            <h3 className="text-base font-semibold text-white">{team ? 'Editar Equipo' : 'Crear Nuevo Equipo'}</h3>
             <button onClick={onClose} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors"><X className="w-4 h-4 text-white/40" /></button>
           </div>
           <p className="text-xs text-white/40">Define la información del equipo y selecciona los miembros.</p>
@@ -1426,7 +1639,7 @@ function TeamModal({ members, onClose, onDone }) {
           <button type="button" onClick={handleSubmit} disabled={saving || !name.trim()}
             className="flex items-center gap-2 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-            Crear Equipo
+            {team ? 'Guardar cambios' : 'Crear Equipo'}
           </button>
         </div>
       </div>
@@ -1435,9 +1648,11 @@ function TeamModal({ members, onClose, onDone }) {
 }
 
 function TabVendedores() {
-  const [subTab, setSubTab]     = useState('vendedores')
-  const [showInvite, setInvite] = useState(false)
-  const [showTeam, setTeam]     = useState(false)
+  const [subTab, setSubTab]       = useState('vendedores')
+  const [showInvite, setInvite]   = useState(false)
+  const [showTeam, setTeam]       = useState(false)
+  const [editingTeam, setEditingTeam]     = useState(null)
+  const [editingMember, setEditingMember] = useState(null)
   const [members, setMembers]   = useState([])
   const [teams, setTeams]       = useState([])
   const [loadingM, setLoadingM] = useState(true)
@@ -1457,6 +1672,11 @@ function TabVendedores() {
   async function handleDeleteTeam(id) {
     if (!confirm('¿Eliminar este equipo?')) return
     try { await api.deleteTeam(id); loadTeams() } catch (err) { alert(err.message) }
+  }
+
+  async function handleDeleteMember(m) {
+    if (!confirm(`¿Eliminar a ${m.name || m.email} del workspace?`)) return
+    try { await api.deleteMember(m.id); loadMembers() } catch (err) { alert(err.message) }
   }
 
   return (
@@ -1504,35 +1724,52 @@ function TabVendedores() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/5">
-                  {['Vendedor','Email','Rol','Estado'].map(h => (
+                  {['Vendedor','Email','Rol','Estado',''].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-medium text-white/30 uppercase tracking-wider">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {members.map(m => (
-                  <tr key={m.id} className="border-b border-white/5 last:border-0 hover:bg-white/3 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-aria-400 to-aria-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
-                          {(m.name || m.email)[0].toUpperCase()}
+                {members.map(m => {
+                  const isActive = m.active !== 0
+                  const isOwner  = m.role === 'owner'
+                  return (
+                    <tr key={m.id} className="border-b border-white/5 last:border-0 hover:bg-white/3 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-aria-400 to-aria-600 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                            {(m.name || m.email)[0].toUpperCase()}
+                          </div>
+                          <span className="font-medium text-white">{m.name || '—'}</span>
                         </div>
-                        <span className="font-medium text-white">{m.name || '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-white/50 text-xs">{m.email}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${m.role === 'owner' || m.role === 'admin' ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-aria-500/15 text-aria-300 border-aria-500/25'}`}>
-                        {m.role === 'owner' ? 'Owner' : m.role === 'admin' ? 'Administrador' : 'Vendedor'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />Activo
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 text-white/50 text-xs">{m.email}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${m.role === 'owner' || m.role === 'admin' ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-aria-500/15 text-aria-300 border-aria-500/25'}`}>
+                          {m.role === 'owner' ? 'Owner' : m.role === 'admin' ? 'Administrador' : 'Vendedor'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`flex items-center gap-1.5 text-xs ${isActive ? 'text-emerald-400' : 'text-white/30'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-white/30'}`} />
+                          {isActive ? 'Activo' : 'Inactivo'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {!isOwner && (
+                          <div className="flex items-center gap-1 justify-end">
+                            <button onClick={() => setEditingMember(m)} className="p-1.5 hover:bg-white/5 rounded-lg text-white/30 hover:text-aria-400 transition-colors" title="Editar">
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => handleDeleteMember(m)} className="p-1.5 hover:bg-white/5 rounded-lg text-white/30 hover:text-red-400 transition-colors" title="Eliminar">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
@@ -1578,9 +1815,14 @@ function TabVendedores() {
                       </div>
                     )}
                   </div>
-                  <button onClick={() => handleDeleteTeam(t.id)} className="p-1.5 hover:bg-white/5 rounded-lg text-white/20 hover:text-red-400 transition-colors">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => setEditingTeam(t)} className="p-1.5 hover:bg-white/5 rounded-lg text-white/20 hover:text-aria-400 transition-colors" title="Editar">
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => handleDeleteTeam(t.id)} className="p-1.5 hover:bg-white/5 rounded-lg text-white/20 hover:text-red-400 transition-colors" title="Eliminar">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1590,6 +1832,8 @@ function TabVendedores() {
 
       {showInvite && <InviteModal onClose={() => setInvite(false)} onDone={loadMembers} />}
       {showTeam   && <TeamModal members={members} onClose={() => setTeam(false)} onDone={loadTeams} />}
+      {editingTeam   && <TeamModal members={members} team={editingTeam} onClose={() => setEditingTeam(null)} onDone={loadTeams} />}
+      {editingMember && <MemberEditModal member={editingMember} onClose={() => setEditingMember(null)} onDone={loadMembers} />}
     </div>
   )
 }

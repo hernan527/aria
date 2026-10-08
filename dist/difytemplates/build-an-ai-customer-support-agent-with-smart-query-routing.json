@@ -1,0 +1,454 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  mode: workflow
+  name: Test Wfl1
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.1.3
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        image_file_size_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        sourceType: start
+        targetType: llm
+      id: 1733969155937-source-1733973583911-target
+      source: '1733969155937'
+      sourceHandle: source
+      target: '1733973583911'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: question-classifier
+      id: 1733973583911-source-1733970774697-target
+      source: '1733973583911'
+      sourceHandle: source
+      target: '1733970774697'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: knowledge-retrieval
+        targetType: llm
+      id: 1733970816599-source-1734070918722-target
+      source: '1733970816599'
+      sourceHandle: source
+      target: '1734070918722'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: variable-aggregator
+      id: 1734070918722-source-1734071068138-target
+      source: '1734070918722'
+      sourceHandle: source
+      target: '1734071068138'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: template-transform
+        targetType: variable-aggregator
+      id: 1733974976105-source-1734071068138-target
+      source: '1733974976105'
+      sourceHandle: source
+      target: '1734071068138'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: variable-aggregator
+      id: 1733975065608-source-1734071068138-target
+      source: '1733975065608'
+      sourceHandle: source
+      target: '1734071068138'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: variable-aggregator
+        targetType: end
+      id: 1734071068138-source-1733976912104-target
+      source: '1734071068138'
+      sourceHandle: source
+      target: '1733976912104'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: question-classifier
+        targetType: knowledge-retrieval
+      id: 1733970774697-1-1733970816599-target
+      source: '1733970774697'
+      sourceHandle: '1'
+      target: '1733970816599'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: question-classifier
+        targetType: template-transform
+      id: 1733970774697-2-1733974976105-target
+      source: '1733970774697'
+      sourceHandle: '2'
+      target: '1733974976105'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: question-classifier
+        targetType: llm
+      id: 1733970774697-1733974649472-1733975065608-target
+      source: '1733970774697'
+      sourceHandle: '1733974649472'
+      target: '1733975065608'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: ''
+        selected: false
+        title: Start
+        type: start
+        variables:
+        - label: Type your question
+          max_length: 48
+          options: []
+          required: true
+          type: paragraph
+          variable: Question
+      height: 90
+      id: '1733969155937'
+      position:
+        x: 408
+        y: 202
+      positionAbsolute:
+        x: 408
+        y: 202
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        classes:
+        - id: '1'
+          name: 製品仕様
+        - id: '2'
+          name: 使い方
+        - id: '1733974649472'
+          name: トラブルシューティング
+        desc: ''
+        instructions: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gemini-1.5-pro
+          provider: google
+        query_variable_selector:
+        - '1733973583911'
+        - text
+        selected: false
+        title: Question Classifier
+        topics: []
+        type: question-classifier
+        vision:
+          enabled: false
+      height: 212
+      id: '1733970774697'
+      position:
+        x: 1110.3473360939824
+        y: 178.49513479100466
+      positionAbsolute:
+        x: 1110.3473360939824
+        y: 178.49513479100466
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        dataset_ids:
+        - 64528751-10ae-4429-94fe-18713079794b
+        - 31c8829f-b510-4c38-840f-f728f23e52a8
+        desc: ''
+        multiple_retrieval_config:
+          reranking_enable: true
+          reranking_mode: reranking_model
+          reranking_model:
+            model: rerank-english-v2.0
+            provider: cohere
+          score_threshold: null
+          top_k: 4
+        query_variable_selector:
+        - '1733969155937'
+        - Question
+        retrieval_mode: multiple
+        selected: false
+        title: Knowledge Retrieval
+        type: knowledge-retrieval
+      height: 92
+      id: '1733970816599'
+      position:
+        x: 1748.3398202786605
+        y: 151.54046070262635
+      positionAbsolute:
+        x: 1748.3398202786605
+        y: 151.54046070262635
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gemini-1.5-pro
+          provider: google
+        prompt_template:
+        - id: d68aeadd-0929-4a1a-8bb3-f3765ce84a99
+          role: system
+          text: '以下の問い合わせ内容を、より具体的な質問に言い換えてください。
+
+            【お問い合わせ内容】{{#1733969155937.Question#}}}'
+        selected: false
+        title: LLM 2
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '1733973583911'
+      position:
+        x: 766.5657963943743
+        y: 202
+      positionAbsolute:
+        x: 766.5657963943743
+        y: 202
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        selected: false
+        template: "お客様各位\r\n\r\nお問い合わせいただき、誠にありがとうございます。お客様のご質問に関しまして：\r\n「{{arg1}}」\r\
+          \n\r\n詳細については、以下のリンクをご確認ください：\r\n <p><a href=\"https://jpn.faq.panasonic.com/app/answers/detail/a_id/40/~/%E3%80%90%E6%B4%97%E6%BF%AF%E6%A9%9F%E5%85%A8%E8%88%AC%E3%80%91%E6%B4%97%E6%BF%AF%E6%A9%9F%E3%82%92%E5%AE%89%E5%85%A8%E3%81%AB%E4%BD%BF%E3%81%86%E3%81%9F%E3%82%81%E3%81%AB%E6%B0%97%E3%82%92%E3%81%A4%E3%81%91%E3%82%8B%E3%81%93%E3%81%A8%E3%81%AF%EF%BC%9C%E6%B3%A8%E6%84%8F%EF%BC%9E\"\
+          \ target=\"_blank\">こちら</a></p>\r\n\r\nその他ご不明点がございましたら、[お問い合わせ先]までお気軽にご連絡ください。\r\
+          \nいつでもお客様をサポートさせていただきます！\r\n\r\n敬具\r\n[氏名]\r\n[役職]\r\n[会社情報]"
+        title: Template 2
+        type: template-transform
+        variables:
+        - value_selector:
+          - '1733969155937'
+          - Question
+          variable: arg1
+      height: 54
+      id: '1733974976105'
+      position:
+        x: 1748.3398202786605
+        y: 279.2902688580845
+      positionAbsolute:
+        x: 1748.3398202786605
+        y: 279.2902688580845
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gemini-1.5-pro
+          provider: google
+        prompt_template:
+        - id: 3e963f97-193e-4c44-ad27-545d788af153
+          role: system
+          text: '以下の問い合わせ内容に対して、自然な文章で回答を作成してください。
+
+            【問い合わせ内容】{{#1733973583911.text#}}
+
+            【質問カテゴリ】{{#1733970774697.class_name#}}'
+        selected: false
+        title: LLM 4
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '1733975065608'
+      position:
+        x: 1731.799359576034
+        y: 394.1262473168744
+      positionAbsolute:
+        x: 1731.799359576034
+        y: 394.1262473168744
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - '1734071068138'
+          - output
+          variable: answer
+        selected: false
+        title: End
+        type: end
+      height: 90
+      id: '1733976912104'
+      position:
+        x: 2763.231788264963
+        y: 265.0516863853638
+      positionAbsolute:
+        x: 2763.231788264963
+        y: 265.0516863853638
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: true
+          variable_selector:
+          - '1733970816599'
+          - result
+        desc: ''
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gemini-1.5-pro
+          provider: google
+        prompt_template:
+        - id: 026db00c-cbfe-4984-a112-912cad0c08ad
+          role: system
+          text: ' {{#context#}}に関する情報を検索してください'
+        selected: false
+        title: LLM 3
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: '1734070918722'
+      position:
+        x: 2052.33982027866
+        y: 151.54046070262635
+      positionAbsolute:
+        x: 2052.33982027866
+        y: 151.54046070262635
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        output_type: string
+        selected: false
+        title: Variable Aggregator
+        type: variable-aggregator
+        variables:
+        - - '1734070918722'
+          - text
+        - - '1733975065608'
+          - text
+        - - '1733974976105'
+          - output
+      height: 164
+      id: '1734071068138'
+      position:
+        x: 2427.2580433087014
+        y: 250.22070936235332
+      positionAbsolute:
+        x: 2427.2580433087014
+        y: 250.22070936235332
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    viewport:
+      x: -1779.740158513947
+      y: 161.58432976630837
+      zoom: 0.8705505632961241

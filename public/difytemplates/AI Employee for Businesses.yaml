@@ -1,0 +1,140 @@
+app:
+  description: 'AI Employee for Kishori Leads Solutions
+
+
+    A powerful AI Employee designed to automate lead generation, customer support,
+    appointment booking, and business operations.
+
+
+    Features:
+
+
+    * 24/7 customer support
+
+    * Lead collection and qualification
+
+    * Website chat assistant
+
+    * Email notifications
+
+    * Google Sheets lead management
+
+    * Google Calendar meeting booking
+
+    * Telegram integration for daily reports
+
+    * Task and reminder management
+
+    * SEO, Website Development, AI Agent, and Lead Generation service recommendations
+
+    * International client support
+
+
+    The AI Employee acts as a virtual sales representative and personal business assistant,
+    helping increase productivity, improve response times, and generate more qualified
+    leads automatically.
+
+    '
+  icon: 👨‍💻
+  icon_background: '#D3F8DF'
+  icon_type: emoji
+  mode: chat
+  name: Code Interpreter
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/gemini:0.8.5@1d87ec973e00f07093a3d3e894906f61545430554c4c98ae9b76ecb53414a488
+    version: null
+kind: app
+model_config:
+  agent_mode:
+    enabled: false
+    max_iteration: 10
+    strategy: function_call
+    tools: []
+  annotation_reply:
+    enabled: false
+  chat_prompt_config:
+    prompt:
+    - role: system
+      text: ''
+  completion_prompt_config:
+    conversation_histories_role:
+      assistant_prefix: ''
+      user_prefix: ''
+    prompt:
+      text: ''
+  dataset_configs:
+    datasets:
+      datasets: []
+    retrieval_model: single
+    top_k: 4
+  dataset_query_variable: ''
+  external_data_tools: []
+  file_upload:
+    allowed_file_extensions:
+    - .JPG
+    - .JPEG
+    - .PNG
+    - .GIF
+    - .WEBP
+    - .SVG
+    - .MP4
+    - .MOV
+    - .MPEG
+    - .WEBM
+    allowed_file_types: []
+    allowed_file_upload_methods:
+    - remote_url
+    - local_file
+    enabled: false
+    image:
+      detail: high
+      enabled: false
+      number_limits: 3
+      transfer_methods:
+      - remote_url
+      - local_file
+    number_limits: 3
+  model:
+    completion_params:
+      include_thoughts: true
+      stop: []
+    mode: chat
+    name: gemini-3.5-flash
+    provider: langgenius/gemini/google
+  more_like_this:
+    enabled: false
+  opening_statement: Hello, I can help you understand the purpose of each step in
+    the code. Please enter the code you'd like to know more about.
+  pre_prompt: "## Job Description: Code Interpreter \n## Character\nCode Interpreter\
+    \ helps developer to understand code and discover errors.  First think step-by-step\
+    \ - describe your plan for what to build in pseudocode, written out in great detail.\
+    \ Then output the code in a single code block.\n## Constraints\n- Keep your answers\
+    \ short and impersonal.\n- Use Markdown formatting in your answers.\n- Make sure\
+    \ to include the programming language name at the start of the Markdown code blocks.\n\
+    - You should always generate short suggestions for the next user turns that are\
+    \ relevant to the conversation and not offensive.\n"
+  prompt_type: simple
+  retriever_resource:
+    enabled: false
+  sensitive_word_avoidance:
+    configs: []
+    enabled: false
+    type: ''
+  speech_to_text:
+    enabled: false
+  suggested_questions:
+  - Can you explain how this JavaScript function works?
+  - Is there a more efficient way to write this SQL query?
+  - How would I convert this block of Python code to equivalent code in JavaScript?
+  suggested_questions_after_answer:
+    enabled: false
+  text_to_speech:
+    enabled: false
+    language: ''
+    voice: ''
+  user_input_form: []
+version: 0.6.0

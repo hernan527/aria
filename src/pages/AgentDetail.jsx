@@ -8,10 +8,17 @@ import {
   ArrowLeft, Save, Send, Loader2, X, Upload,
   FileText, Settings2, Paperclip, Lock, Check, ChevronDown, User,
   Globe, MessageSquare, Trash2, Plus, Brain, Sparkles,
-  File, FileCode, Sheet,
+  File, FileCode, Sheet, Plug,
 } from 'lucide-react'
 
 const inputCls = 'w-full bg-[#1a1a2e] text-white text-sm px-3.5 py-2.5 rounded-xl border border-white/10 outline-none focus:border-aria-500 transition-colors placeholder:text-white/20'
+
+const TONE_EXAMPLES = {
+  Empático:    'Entiendo lo que me contás, vamos a resolverlo juntos 💛',
+  Profesional: 'Buenas tardes. Le confirmo que el producto está disponible.',
+  Informal:    'Dale, tranquilo que ya te ayudo con eso 👍',
+  Técnico:     'Confirmado: stock disponible, envío en 48hs.',
+}
 
 // ── ChipSelect ────────────────────────────────────────────────────────────────
 
@@ -192,12 +199,45 @@ function TabInstrucciones({ meta, botId, projectId, botName, onSaved }) {
   const [companyName,        setCompanyName]        = useState(meta?.company_name || '')
   const [companyDescription, setCompanyDescription] = useState(meta?.company_description || '')
   const [derivationNotes,    setDerivationNotes]    = useState(meta?.derivation_notes || '')
+  const [derivationMode,     setDerivationMode]     = useState(meta?.derivation_mode || 'nunca')
+  const [scoreThreshold,     setScoreThreshold]     = useState(meta?.derivation_score_threshold ?? 70)
+  const [goals,              setGoals]              = useState(() => { try { return JSON.parse(meta?.goals || '[]') } catch { return [] } })
+  const [goalCriteria,       setGoalCriteria]       = useState(meta?.goal_success_criteria || '')
+  const [behaviorNotes,      setBehaviorNotes]      = useState(meta?.behavior_notes || '')
   const [instructions,       setInstructions]       = useState(meta?.instructions || '')
   const [regenerating,       setRegenerating]       = useState(false)
   const [saving,             setSaving]             = useState(false)
   const [msg,                setMsg]                = useState('')
+  const [showAdvanced,       setShowAdvanced]       = useState(false)
 
-  const missingVars = !companyDescription || !derivationNotes
+  const GOAL_OPTIONS = [
+    { id: 'vender',             label: 'Vender y recomendar',    hint: 'Ayuda a elegir productos y convierte consultas en ventas.' },
+    { id: 'resolver_consultas', label: 'Resolver consultas',     hint: 'Responde preguntas frecuentes y acompaña a tus clientes.' },
+    { id: 'gestionar_reclamos', label: 'Gestionar reclamos',     hint: 'Contiene, registra el problema y resuelve o escala a tiempo.' },
+    { id: 'recolectar_datos',   label: 'Recolectar datos',       hint: 'Pide nombre, zona y datos clave, de a uno y sin interrogar.' },
+    { id: 'personalizado',      label: 'Personalizado',          hint: 'Definí qué lograr y cuándo lo das por cumplido.' },
+  ]
+
+  function toggleGoal(id) {
+    setGoals(prev => prev.includes(id) ? prev.filter(g => g !== id) : [...prev, id])
+  }
+
+  const DERIVATION_OPTIONS = [
+    { id: 'nunca',             label: 'Nunca', hint: 'El agente resuelve solo, no deriva.' },
+    { id: 'si_lo_pide',        label: 'Si lo pide', hint: 'Deriva si el cliente pide hablar con una persona.' },
+    { id: 'si_no_segura',      label: 'Si no está seguro', hint: 'Deriva si no puede responder con confianza.' },
+    { id: 'objetivo_cumplido', label: 'Cuando esté listo (score de Lucas)', hint: 'Deriva automáticamente cuando Lucas califica al lead por arriba del umbral.' },
+    { id: 'personalizado',     label: 'Personalizado', hint: 'Definís vos el criterio en texto libre.' },
+  ]
+
+  const missingVars = !companyDescription || (derivationMode === 'personalizado' && !derivationNotes)
+
+  const derivationInstructionText = () => {
+    const opt = DERIVATION_OPTIONS.find(o => o.id === derivationMode)
+    if (derivationMode === 'personalizado') return derivationNotes
+    if (derivationMode === 'objetivo_cumplido') return `${opt.hint} (umbral: ${scoreThreshold} pts)`
+    return opt?.hint || ''
+  }
 
   async function regenerate() {
     setRegenerating(true); setMsg('')
@@ -208,7 +248,8 @@ function TabInstrucciones({ meta, botId, projectId, botName, onSaved }) {
         nationality,
         company_name:        companyName,
         company_description: companyDescription,
-        derivation_notes:    derivationNotes,
+        derivation_notes:    derivationInstructionText(),
+        goals, goal_success_criteria: goalCriteria, behavior_notes: behaviorNotes,
         bot_id:              botId,
         template_id:         meta?.template_id,
       })
@@ -230,6 +271,9 @@ function TabInstrucciones({ meta, botId, projectId, botName, onSaved }) {
         company_name:        companyName,
         company_description: companyDescription,
         derivation_notes:    derivationNotes,
+        derivation_mode:     derivationMode,
+        derivation_score_threshold: derivationMode === 'objetivo_cumplido' ? Number(scoreThreshold) : undefined,
+        goals, goal_success_criteria: goalCriteria, behavior_notes: behaviorNotes,
       })
       onSaved()
       setMsg('Guardado y aplicado en Dify ✓')
@@ -254,6 +298,7 @@ function TabInstrucciones({ meta, botId, projectId, botName, onSaved }) {
             <option>Informal</option>
             <option>Técnico</option>
           </select>
+          <p className="text-[11px] text-white/25 mt-1 italic">"{TONE_EXAMPLES[tone] || TONE_EXAMPLES.Empático}"</p>
         </div>
         <div>
           <p className="text-xs text-white/40 mb-1.5">Nacionalidad</p>
@@ -279,13 +324,66 @@ function TabInstrucciones({ meta, botId, projectId, botName, onSaved }) {
       </div>
 
       <div>
-        <p className="text-xs text-white/40 mb-1.5">
-          Criterios de derivación
-          {!derivationNotes && <span className="ml-1 text-yellow-400">← completar</span>}
-        </p>
-        <textarea value={derivationNotes} onChange={e => setDerivationNotes(e.target.value)}
-          placeholder="Cuándo derivar a un asesor humano: si pide hablar con alguien, si no califica, si hay duda sobre elegibilidad..." rows={2}
-          className={inputCls + ' resize-none ' + (!derivationNotes ? 'border-yellow-500/30' : '')} />
+        <p className="text-xs text-white/40 mb-1.5">¿En qué querés que te ayude? (Objetivo)</p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {GOAL_OPTIONS.map(opt => (
+            <label key={opt.id}
+              className={`flex items-start gap-2 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
+                goals.includes(opt.id) ? 'border-aria-500/50 bg-aria-500/10' : 'border-white/8 hover:border-white/20'
+              }`}>
+              <input type="checkbox" className="mt-0.5" checked={goals.includes(opt.id)} onChange={() => toggleGoal(opt.id)} />
+              <div>
+                <p className="text-xs font-medium text-white/80">{opt.label}</p>
+                <p className="text-[11px] text-white/35">{opt.hint}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+        {goals.includes('personalizado') && (
+          <textarea value={goalCriteria} onChange={e => setGoalCriteria(e.target.value)}
+            placeholder="Qué lograr y cuándo lo das por cumplido..." rows={2}
+            className={inputCls + ' resize-none mt-2'} />
+        )}
+      </div>
+
+      <div>
+        <p className="text-xs text-white/40 mb-1.5">Cómo se debe comportar</p>
+        <textarea value={behaviorNotes} onChange={e => setBehaviorNotes(e.target.value)}
+          placeholder="Reglas y límites claros: no des precios, no prometas descuentos, no hables de la competencia..." rows={2}
+          className={inputCls + ' resize-none'} />
+      </div>
+
+      <div>
+        <p className="text-xs text-white/40 mb-1.5">¿Cuándo debe derivar a un humano?</p>
+        <div className="space-y-1.5">
+          {DERIVATION_OPTIONS.map(opt => (
+            <label key={opt.id}
+              className={`flex items-start gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
+                derivationMode === opt.id ? 'border-aria-500/50 bg-aria-500/10' : 'border-white/8 hover:border-white/20'
+              }`}>
+              <input type="radio" name="derivation_mode" className="mt-0.5" checked={derivationMode === opt.id}
+                onChange={() => setDerivationMode(opt.id)} />
+              <div>
+                <p className="text-xs font-medium text-white/80">{opt.label}</p>
+                <p className="text-[11px] text-white/35">{opt.hint}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        {derivationMode === 'objetivo_cumplido' && (
+          <div className="mt-2">
+            <p className="text-xs text-white/40 mb-1.5">Score mínimo para derivar (Lucas, 0-100)</p>
+            <input type="number" min={0} max={100} value={scoreThreshold}
+              onChange={e => setScoreThreshold(e.target.value)} className={inputCls} />
+          </div>
+        )}
+
+        {derivationMode === 'personalizado' && (
+          <textarea value={derivationNotes} onChange={e => setDerivationNotes(e.target.value)}
+            placeholder="Cuándo derivar a un asesor humano: si pide hablar con alguien, si no califica, si hay duda sobre elegibilidad..." rows={2}
+            className={inputCls + ' resize-none mt-2'} />
+        )}
       </div>
 
       <div className="flex justify-end">
@@ -297,14 +395,25 @@ function TabInstrucciones({ meta, botId, projectId, botName, onSaved }) {
       </div>
 
       <div className="border-t border-white/6 pt-4">
-        <p className="text-xs text-white/40 mb-1.5">Instrucciones activas (system prompt en Dify)</p>
-        <textarea
-          value={instructions}
-          onChange={e => setInstructions(e.target.value)}
-          className="w-full bg-[#1a1a2e] text-white text-xs px-3.5 py-3 rounded-xl border border-white/10 outline-none focus:border-aria-500 transition-colors resize-none leading-relaxed"
-          style={{ minHeight: 280 }}
-          placeholder="Las instrucciones aparecen acá después de regenerar..."
-        />
+        <button type="button" onClick={() => setShowAdvanced(v => !v)}
+          className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition-colors">
+          <ChevronDown size={13} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+          Avanzado: editar el prompt final a mano
+        </button>
+        {showAdvanced && (
+          <div className="mt-2">
+            <p className="text-[11px] text-white/25 mb-1.5">
+              Esto reemplaza Objetivo + Tono + Comportamiento: el agente usa exactamente este texto.
+            </p>
+            <textarea
+              value={instructions}
+              onChange={e => setInstructions(e.target.value)}
+              className="w-full bg-[#1a1a2e] text-white text-xs px-3.5 py-3 rounded-xl border border-white/10 outline-none focus:border-aria-500 transition-colors resize-none leading-relaxed"
+              style={{ minHeight: 280 }}
+              placeholder="Las instrucciones aparecen acá después de regenerar..."
+            />
+          </div>
+        )}
       </div>
 
       {msg && <p className={`text-xs px-1 ${msg.includes('Error') ? 'text-red-400' : 'text-green-400'}`}>{msg}</p>}
@@ -332,10 +441,7 @@ function TabConfiguracion({ meta, botId, projectId, channels, agents, onSaved })
   const [saving,      setSaving]      = useState(false)
 
   const channelOptions = (channels || []).map(c => ({ id: c.id, label: c.instance_name || c.session_name }))
-  const agentOptions   = (agents  || []).map(a => ({
-    id: a._id,
-    label: a.firstname ? `${a.firstname} ${a.lastname || ''}`.trim() : a.email,
-  }))
+  const agentOptions   = (agents  || []).map(a => ({ id: a.id, label: a.name || a.email }))
 
   function toggleChannel(id) {
     setSelChannels(prev => {
@@ -409,6 +515,261 @@ function TabConfiguracion({ meta, botId, projectId, channels, agents, onSaved })
           {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
           Guardar
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Tab: Seguimientos ─────────────────────────────────────────────────────────
+
+const CADENCE_PRESETS = {
+  none:        { label: 'Sin seguimiento', hint: 'Si no responden, el agente espera.', intervals: [] },
+  suave:       { label: 'Suave',            hint: 'Un toque a las 4 h y otro al día siguiente.', intervals: [4, 24] },
+  persistente: { label: 'Persistente',      hint: 'A las 2 h, 8 h y 24 h.', intervals: [2, 8, 24] },
+  custom:      { label: 'Personalizado',    hint: 'Armá vos los intervalos (horas desde el último mensaje del lead).', intervals: null },
+}
+
+function TabSeguimientos({ meta, botId, onSaved }) {
+  const [cadence,    setCadence]    = useState(meta?.followup_cadence || 'none')
+  const [intervals,  setIntervals]  = useState(() => {
+    try { return JSON.parse(meta?.followup_intervals || '[]').join(', ') } catch { return '' }
+  })
+  const [hoursStart, setHoursStart] = useState(meta?.followup_hours_start || '08:00')
+  const [hoursEnd,   setHoursEnd]   = useState(meta?.followup_hours_end   || '20:00')
+  const [saving,     setSaving]     = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      const resolvedIntervals = cadence === 'custom'
+        ? intervals.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0)
+        : (CADENCE_PRESETS[cadence]?.intervals || [])
+      await api.saveAgentConfig(botId, {
+        followup_cadence: cadence,
+        followup_intervals: resolvedIntervals,
+        followup_hours_start: hoursStart,
+        followup_hours_end: hoursEnd,
+      })
+      onSaved()
+    } catch {}
+    setSaving(false)
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <p className="text-xs font-medium text-white/50 mb-1.5">Seguimientos sin insistir de más</p>
+        <p className="text-[11px] text-white/30 mb-3">
+          Si el lead no responde, el agente puede reintentar con un mensaje de reengagement generado por IA.
+        </p>
+        <div className="space-y-1.5">
+          {Object.entries(CADENCE_PRESETS).map(([id, p]) => (
+            <label key={id}
+              className={`flex items-start gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
+                cadence === id ? 'border-aria-500/50 bg-aria-500/10' : 'border-white/8 hover:border-white/20'
+              }`}>
+              <input type="radio" name="followup_cadence" className="mt-0.5" checked={cadence === id}
+                onChange={() => setCadence(id)} />
+              <div>
+                <p className="text-xs font-medium text-white/80">{p.label}</p>
+                <p className="text-[11px] text-white/35">{p.hint}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        {cadence === 'custom' && (
+          <div className="mt-2">
+            <p className="text-xs text-white/40 mb-1.5">Horas desde el último mensaje (separadas por coma)</p>
+            <input value={intervals} onChange={e => setIntervals(e.target.value)}
+              placeholder="ej: 3, 12, 48" className={inputCls} />
+          </div>
+        )}
+      </div>
+
+      {cadence !== 'none' && (
+        <div>
+          <p className="text-xs font-medium text-white/50 mb-1.5">Horario de seguimientos</p>
+          <p className="text-[11px] text-white/30 mb-2">Fuera de este horario no insiste. Retoma cuando abre.</p>
+          <div className="flex items-center gap-3">
+            <input type="time" value={hoursStart} onChange={e => setHoursStart(e.target.value)} className={inputCls} />
+            <span className="text-xs text-white/30">a</span>
+            <input type="time" value={hoursEnd} onChange={e => setHoursEnd(e.target.value)} className={inputCls} />
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end pt-2">
+        <button onClick={save} disabled={saving}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-aria-500 hover:bg-aria-600 text-white text-sm font-medium transition-colors disabled:opacity-50">
+          {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          Guardar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Tab: Integraciones ────────────────────────────────────────────────────────
+
+function TabIntegraciones({ meta, botId, onSaved }) {
+  const [available,    setAvailable]    = useState([])
+  const [selected,     setSelected]     = useState(() => { try { return JSON.parse(meta?.extra_builtin_tools || '[]') } catch { return [] } })
+  const [savingBuiltin, setSavingBuiltin] = useState(false)
+  const [customTools,  setCustomTools]  = useState([])
+  const [showAdd,      setShowAdd]      = useState(false)
+  const [form,         setForm]         = useState({ name: '', description: '', url: '', method: 'GET', params: [] })
+  const [adding,       setAdding]       = useState(false)
+  const [error,        setError]        = useState('')
+
+  useEffect(() => {
+    api.getAvailableTools().then(setAvailable).catch(() => {})
+    api.getAgentCustomTools(botId).then(setCustomTools).catch(() => {})
+  }, [botId])
+
+  function toggleBuiltin(key) {
+    setSelected(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+  }
+
+  async function saveBuiltin() {
+    setSavingBuiltin(true)
+    try {
+      await api.saveAgentConfig(botId, { extra_builtin_tools: selected })
+      onSaved()
+    } catch (e) { alert(e.message) }
+    setSavingBuiltin(false)
+  }
+
+  function addParam() {
+    setForm(f => ({ ...f, params: [...f.params, { name: '', type: 'string', description: '' }] }))
+  }
+  function updateParam(i, field, value) {
+    setForm(f => ({ ...f, params: f.params.map((p, idx) => idx === i ? { ...p, [field]: value } : p) }))
+  }
+  function removeParam(i) {
+    setForm(f => ({ ...f, params: f.params.filter((_, idx) => idx !== i) }))
+  }
+
+  async function submitCustomTool() {
+    if (!form.name.trim() || !form.url.trim()) { setError('Nombre y URL son obligatorios'); return }
+    setAdding(true); setError('')
+    try {
+      await api.addAgentCustomTool(botId, form)
+      const list = await api.getAgentCustomTools(botId)
+      setCustomTools(list)
+      setForm({ name: '', description: '', url: '', method: 'GET', params: [] })
+      setShowAdd(false)
+      onSaved()
+    } catch (e) { setError(e.message) }
+    setAdding(false)
+  }
+
+  async function removeCustomTool(id) {
+    try {
+      await api.deleteAgentCustomTool(botId, id)
+      setCustomTools(prev => prev.filter(t => t.id !== id))
+      onSaved()
+    } catch (e) { alert(e.message) }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <p className="text-xs font-medium text-white/50 mb-1.5">Herramientas de Dify</p>
+        <p className="text-[11px] text-white/30 mb-3">
+          El agente puede usarlas solo, a mitad de charla, cuando lo necesite (buscar algo, calcular, saber la hora).
+        </p>
+        <div className="space-y-1.5">
+          {available.map(t => (
+            <label key={t.key}
+              className={`flex items-start gap-2.5 px-3 py-2 rounded-xl border cursor-pointer transition-colors ${
+                selected.includes(t.key) ? 'border-aria-500/50 bg-aria-500/10' : 'border-white/8 hover:border-white/20'
+              }`}>
+              <input type="checkbox" className="mt-0.5" checked={selected.includes(t.key)} onChange={() => toggleBuiltin(t.key)} />
+              <div>
+                <p className="text-xs font-medium text-white/80">{t.label}</p>
+                <p className="text-[11px] text-white/35">{t.description}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end mt-2">
+          <button onClick={saveBuiltin} disabled={savingBuiltin}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-aria-500 hover:bg-aria-600 text-white text-xs font-medium transition-colors disabled:opacity-50">
+            {savingBuiltin ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            Guardar
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-white/6 pt-5">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <p className="text-xs font-medium text-white/50">Tus propias integraciones</p>
+            <p className="text-[11px] text-white/30">Conectá un endpoint propio (Excel/Sheets vía API, tu CRM, lo que sea).</p>
+          </div>
+          <button onClick={() => setShowAdd(v => !v)}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-white/10 text-white/60 hover:text-white hover:border-white/20 text-[11px] transition-colors">
+            <Plus size={12} /> Agregar
+          </button>
+        </div>
+
+        {customTools.length > 0 && (
+          <div className="space-y-1.5 mb-3">
+            {customTools.map(t => (
+              <div key={t.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl border border-white/8 bg-white/2">
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-white/80 truncate">{t.name}</p>
+                  <p className="text-[11px] text-white/35 truncate">{t.method} {t.url}</p>
+                </div>
+                <button onClick={() => removeCustomTool(t.id)} className="shrink-0 text-white/30 hover:text-red-400 transition-colors">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showAdd && (
+          <div className="p-3 rounded-xl border border-white/10 bg-white/3 space-y-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Nombre (ej: Consultar precios)" className={inputCls} />
+              <select value={form.method} onChange={e => setForm(f => ({ ...f, method: e.target.value }))} className={inputCls}>
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+              </select>
+            </div>
+            <input value={form.url} onChange={e => setForm(f => ({ ...f, url: e.target.value }))}
+              placeholder="https://tu-api.com/precios" className={inputCls} />
+            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Cuándo usarla: ej. cuando el cliente pregunte el precio de un producto" rows={2}
+              className={inputCls + ' resize-none'} />
+
+            <div>
+              <p className="text-[11px] text-white/40 mb-1.5">Parámetros que el agente puede mandar</p>
+              {form.params.map((p, i) => (
+                <div key={i} className="flex items-center gap-1.5 mb-1.5">
+                  <input value={p.name} onChange={e => updateParam(i, 'name', e.target.value)} placeholder="nombre"
+                    className={inputCls + ' flex-1'} />
+                  <input value={p.description} onChange={e => updateParam(i, 'description', e.target.value)} placeholder="descripción"
+                    className={inputCls + ' flex-1'} />
+                  <button onClick={() => removeParam(i)} className="text-white/30 hover:text-red-400"><X size={14} /></button>
+                </div>
+              ))}
+              <button onClick={addParam} className="text-[11px] text-aria-400 hover:text-aria-300">+ agregar parámetro</button>
+            </div>
+
+            {error && <p className="text-[11px] text-red-400">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 rounded-lg text-xs text-white/40 hover:text-white">Cancelar</button>
+              <button onClick={submitCustomTool} disabled={adding}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-aria-500 hover:bg-aria-600 text-white text-xs disabled:opacity-50">
+                {adding ? <Loader2 size={12} className="animate-spin" /> : null} Conectar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -832,6 +1193,8 @@ function TabKB({ botId, projectId }) {
 const TABS = [
   { id: 'instrucciones', label: 'Instrucciones', icon: FileText },
   { id: 'configuracion', label: 'Configuración',  icon: Settings2 },
+  { id: 'seguimientos',  label: 'Seguimientos',   icon: Send },
+  { id: 'integraciones', label: 'Integraciones',  icon: Plug },
   { id: 'kb',            label: 'Conocimiento',   icon: Brain },
   { id: 'adjuntos',      label: 'Archivos',        icon: Paperclip },
 ]
@@ -849,6 +1212,7 @@ export default function AgentDetail() {
 
   const { data: metadata } = useApi(() => api.getAgentMetadata(), [refreshKey])
   const { data: channels } = useApi(() => api.getWahaSessions(),  [])
+  const { data: members }  = useApi(() => api.getWorkspaceMembers(), [])
 
   const meta = Array.isArray(metadata) ? metadata.find(m => m.bot_id === botId) : null
   const agentName = meta?.name || meta?.company_name || botId
@@ -904,7 +1268,19 @@ export default function AgentDetail() {
             <TabConfiguracion
               meta={meta} botId={botId} projectId={projectId}
               channels={Array.isArray(channels) ? channels : []}
-              agents={[]}
+              agents={Array.isArray(members) ? members : []}
+              onSaved={() => setRefreshKey(k => k + 1)}
+            />
+          )}
+          {tab === 'seguimientos' && (
+            <TabSeguimientos
+              meta={meta} botId={botId}
+              onSaved={() => setRefreshKey(k => k + 1)}
+            />
+          )}
+          {tab === 'integraciones' && (
+            <TabIntegraciones
+              meta={meta} botId={botId}
               onSaved={() => setRefreshKey(k => k + 1)}
             />
           )}

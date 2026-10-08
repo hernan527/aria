@@ -132,6 +132,14 @@ export const api = {
   deleteFunnelStage: (leadId) =>
     request(`/funnel/stages/${leadId}`, { method: 'DELETE' }),
 
+  // ── Lucas (agente calificador) ───────────────────────────────────────────────
+  getAiScoringSettings: () => request('/ai-scoring/settings'),
+  setAiScoringEnabled: (enabled) =>
+    request('/ai-scoring/settings', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  getAiScoringSummary: () => request('/ai-scoring/summary'),
+  getAiScoringScores: () => request('/ai-scoring/scores'),
+  getAiScoringTop: (limit) => request(`/ai-scoring/top?limit=${limit || 10}`),
+
   // ── Canales ────────────────────────────────────────────────────────────────
   getChannelSettings: () => request('/channels/settings'),
   saveChannelSettings: (payload) =>
@@ -140,6 +148,8 @@ export const api = {
   createChannelInstance: (payload) =>
     request('/channels/instances', { method: 'POST', body: JSON.stringify(payload) }),
   getInstanceQR: (id) => request(`/channels/instances/${id}/qr`),
+  setInstanceBot: (id, bot_id) =>
+    request(`/channels/instances/${id}/bot`, { method: 'PUT', body: JSON.stringify({ bot_id }) }),
   deleteChannelInstance: (id) =>
     request(`/channels/instances/${id}`, { method: 'DELETE' }),
   logoutChannelInstance: (id) =>
@@ -184,6 +194,10 @@ export const api = {
     request(`/agents/${botId}/finalize`, { method: 'PUT', body: JSON.stringify(payload) }),
 
   getAgentMetadata: () => request('/agents/metadata'),
+  getAvailableTools: () => request('/agents/available-tools'),
+  getAgentCustomTools: (botId) => request(`/agents/${botId}/custom-tools`),
+  addAgentCustomTool: (botId, payload) => request(`/agents/${botId}/custom-tools`, { method: 'POST', body: JSON.stringify(payload) }),
+  deleteAgentCustomTool: (botId, toolId) => request(`/agents/${botId}/custom-tools/${toolId}`, { method: 'DELETE' }),
   quickCreateAgent: (payload) => request('/agents/quick-create', { method: 'POST', body: JSON.stringify(payload) }),
   getDifyAgents: () => request('/agents/dify-list'),
   deleteAgent: (botId) => request(`/agents/${botId}`, { method: 'DELETE' }),
@@ -211,11 +225,21 @@ export const api = {
   setActiveBotId: (default_bot_id) =>
     request('/channels/settings/bot', { method: 'PUT', body: JSON.stringify({ default_bot_id }) }),
 
+  // ── Billing ───────────────────────────────────────────────────────────────
+  getBillingStatus: () => request('/billing/status'),
+  checkoutPlan: (plan_id) => request('/billing/checkout', { method: 'POST', body: JSON.stringify({ plan_id }) }),
+  getAdminPlans: () => request('/admin/plans'),
+  updateAdminPlan: (id, payload) => request(`/admin/plans/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+
   // ── WAHA Inbox ────────────────────────────────────────────────────────────
   // ── Workspace ─────────────────────────────────────────────────────────────
   getWorkspaceMembers: () => request('/workspace/members'),
   inviteMember: (payload) =>
     request('/workspace/invite', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMember: (id, payload) =>
+    request(`/workspace/members/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteMember: (id) =>
+    request(`/workspace/members/${id}`, { method: 'DELETE' }),
   getTeams: () => request('/workspace/teams'),
   createTeam: (payload) =>
     request('/workspace/teams', { method: 'POST', body: JSON.stringify(payload) }),

@@ -1,0 +1,180 @@
+app:
+  description: 'é um assistente virtual inteligente para WhatsApp que automatiza o
+    atendimento, responde clientes em segundos, qualifica leads e ajuda empresas a
+    vender mais sem precisar de um atendente disponível 24 horas por dia.
+
+
+
+
+
+    '
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: chat
+  name: AURA AI
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/openai:0.4.2@21195ee1321849e0a7d4b3f6b2fd8c2be23ea6c7182e1b444ecc4c1711b52468
+    version: null
+kind: app
+model_config:
+  agent_mode:
+    enabled: false
+    max_iteration: 10
+    strategy: function_call
+    tools: []
+  annotation_reply:
+    enabled: false
+  chat_prompt_config:
+    prompt:
+    - role: system
+      text: ''
+  completion_prompt_config:
+    conversation_histories_role:
+      assistant_prefix: ''
+      user_prefix: ''
+    prompt:
+      text: ''
+  dataset_configs:
+    datasets:
+      datasets: []
+    retrieval_model: multiple
+    top_k: 4
+  dataset_query_variable: ''
+  external_data_tools: []
+  file_upload:
+    allowed_file_extensions:
+    - .JPG
+    - .JPEG
+    - .PNG
+    - .GIF
+    - .WEBP
+    - .SVG
+    - .MP4
+    - .MOV
+    - .MPEG
+    - .WEBM
+    allowed_file_types: []
+    allowed_file_upload_methods:
+    - remote_url
+    - local_file
+    enabled: false
+    image:
+      detail: high
+      enabled: false
+      number_limits: 3
+      transfer_methods:
+      - remote_url
+      - local_file
+    number_limits: 3
+  model:
+    completion_params:
+      stop: []
+    mode: chat
+    name: gpt-4o
+    provider: langgenius/openai/openai
+  more_like_this:
+    enabled: false
+  opening_statement: "Olá! Sou seu consultor comercial especializado em vendas pelo\
+    \ WhatsApp.  \nMeu papel é entender sua necessidade, apresentar a melhor solução\
+    \ e ajudar você a chegar no próximo passo — seja solicitar um orçamento, agendar\
+    \ uma demonstração ou finalizar sua compra.  \nPode me contar um pouco sobre o\
+    \ que você está buscando hoje?"
+  pre_prompt: "```xml\n<instruction>\nO objetivo deste prompt é simular um consultor\
+    \ comercial especializado em vendas pelo WhatsApp.  \nSiga cuidadosamente as etapas\
+    \ abaixo para gerar mensagens eficazes de atendimento e conversão, de acordo com\
+    \ as informações fornecidas nas variáveis de entrada.\n\nETAPAS A SEGUIR:\n1.\
+    \ Analise o conteúdo das variáveis abaixo para entender o contexto da conversa\
+    \ e a necessidade do cliente.\n2. Sempre cumprimente o cliente pelo nome, se o\
+    \ nome estiver disponível em {{client_name}}.\n3. Utilize mensagens curtas, com\
+    \ tom profissional, amigável, natural e humano — nunca robótico.\n4. Identifique\
+    \ primeiro a necessidade do cliente antes de oferecer uma solução.  \n   - Faça\
+    \ perguntas que ajudem a entender melhor o problema do cliente.\n5. Após identificar\
+    \ o problema, apresente a solução ideal baseada em {{product_or_service_description}}\
+    \ e alinhada à necessidade detectada.\n6. Destaque benefícios de forma objetiva\
+    \ — enfatize resultados e pontos fortes de {{product_or_service_description}}.\n\
+    7. Caso o cliente apresente alguma objeção (por exemplo, preço ou falta de tempo)\
+    \ e se houver uma indicação de tipo em {{client_objection}}, use os modelos adequados\
+    \ descritos:\n   - Objeção de preço: “Entendo sua preocupação. Além do valor,\
+    \ o mais importante é o resultado que você terá...”\n   - Objeção de tempo: “Sem\
+    \ problemas. Posso resumir os principais benefícios em poucos minutos.”\n8. Sempre\
+    \ que identificar interesse do cliente (ex: na variável {{client_interest_level}}),\
+    \ conduza para uma das ações de fechamento adequadas:\n   - Agendar demonstração\
+    \  \n   - Solicitar orçamento  \n   - Finalizar compra  \n   - Falar com especialista\n\
+    9. Nunca pressione o cliente, mas mantenha foco na conversão.\n10. A resposta\
+    \ final deve ser clara, direta e natural, sem incluir nenhuma tag XML no texto\
+    \ final.\n\nO formato de saída deve conter apenas as mensagens de WhatsApp simuladas,\
+    \ sem usar marcadores, cabeçalhos ou qualquer estrutura adicional.\n</instruction>\n\
+    \n<input>\n{{client_name}} — Nome do cliente (string ou vazio se não informado)\
+    \  \n{{client_message}} — Última mensagem recebida do cliente (texto)  \n{{client_need_summary}}\
+    \ — Breve resumo da necessidade do cliente (texto)  \n{{client_objection}} — Tipo\
+    \ de objeção apresentada (ex: \"preço\", \"tempo\") ou vazio se não houver  \n\
+    {{product_or_service_description}} — Descrição breve do produto ou serviço oferecido\
+    \ (texto)  \n{{client_interest_level}} — Grau de interesse detectado (ex: “alto”,\
+    \ “médio”, “baixo”)  \n{{desired_action}} — Ação de fechamento desejada (ex: “agendar\
+    \ demonstração”, “solicitar orçamento”, “finalizar compra”, “falar com especialista”)\
+    \  \n{{conversation_stage}} — Etapa atual do fluxo de vendas (ex: “cumprimento”,\
+    \ “descoberta”, “identificação”, “apresentação”, “benefícios”, “objeções”, “fechamento”)\n\
+    </input>\n\n"
+  prompt_type: simple
+  retriever_resource:
+    enabled: true
+  sensitive_word_avoidance:
+    config: {}
+    enabled: false
+    type: ''
+  speech_to_text:
+    enabled: false
+  suggested_questions: []
+  suggested_questions_after_answer:
+    enabled: false
+  text_to_speech:
+    enabled: false
+    language: ''
+    voice: ''
+  user_input_form:
+  - text-input:
+      default: ''
+      label: client_name
+      required: true
+      variable: client_name
+  - text-input:
+      default: ''
+      label: product_or_service_description
+      required: true
+      variable: product_or_service_description
+  - text-input:
+      default: ''
+      label: client_objection
+      required: true
+      variable: client_objection
+  - text-input:
+      default: ''
+      label: client_interest_level
+      required: true
+      variable: client_interest_level
+  - text-input:
+      default: ''
+      label: client_message
+      required: true
+      variable: client_message
+  - text-input:
+      default: ''
+      label: client_need_summary
+      required: true
+      variable: client_need_summary
+  - text-input:
+      default: ''
+      label: desired_action
+      required: true
+      variable: desired_action
+  - text-input:
+      default: ''
+      label: conversation_stage
+      required: true
+      variable: conversation_stage
+version: 0.6.0

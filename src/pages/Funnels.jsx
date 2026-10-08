@@ -198,6 +198,7 @@ export default function Funnels() {
   const [labels,       setLabels]       = useState([])
   const [activeLabel,  setActiveLabel]  = useState(null)
   const [stageMap,     setStageMap]     = useState({})
+  const [scoreMap,     setScoreMap]     = useState({})
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState(null)
   const [saving,       setSaving]       = useState(false)
@@ -208,11 +209,12 @@ export default function Funnels() {
   const loadAll = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const [fData, cData, sData, lData] = await Promise.all([
+      const [fData, cData, sData, lData, scoreData] = await Promise.all([
         api.getFunnels(),
         api.getContacts(null, { limit: 300 }),
         api.getFunnelStages(),
         api.getLabels(null),
+        api.getAiScoringScores().catch(() => ({})),
       ])
       setFunnels(fData || [])
       if (fData?.length && !selectedId) setSelectedId(fData[0].id)
@@ -222,6 +224,7 @@ export default function Funnels() {
       setContacts(list)
       setStageMap(sData || {})
       setLabels(Array.isArray(lData) ? lData : (lData?.data || lData?.labels || []))
+      setScoreMap(scoreData || {})
     } catch (e) { setError(e.message) }
     setLoading(false)
   }, [])
@@ -453,6 +456,18 @@ export default function Funnels() {
                                           </p>
                                         )}
                                       </div>
+                                      {scoreMap[c._id||c.id] && (
+                                        <span
+                                          title={`Lucas: ${scoreMap[c._id||c.id].temperature}`}
+                                          className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                            scoreMap[c._id||c.id].temperature === 'caliente' ? 'bg-red-500/15 text-red-400' :
+                                            scoreMap[c._id||c.id].temperature === 'tibio' ? 'bg-amber-500/15 text-amber-400' :
+                                            'bg-blue-500/15 text-blue-400'
+                                          }`}
+                                        >
+                                          {scoreMap[c._id||c.id].score}
+                                        </span>
+                                      )}
                                     </div>
 
                                     {/* Tags con colores de Tiledesk */}

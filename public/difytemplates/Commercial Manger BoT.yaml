@@ -1,0 +1,223 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: agent-chat
+  name: Ricbot
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: aopstudio/google_scholar:0.0.1@01c10b61f0e960a76647775d5913b90c26b91acff3ec2cc4f8f51fca0fc1add5
+    version: null
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/openai:0.4.2@21195ee1321849e0a7d4b3f6b2fd8c2be23ea6c7182e1b444ecc4c1711b52468
+    version: null
+kind: app
+model_config:
+  agent_mode:
+    enabled: true
+    max_iteration: 10
+    prompt: null
+    strategy: function_call
+    tools:
+    - enabled: true
+      isDeleted: false
+      notAuthor: false
+      provider_id: aopstudio/google_scholar/google_scholar
+      provider_name: aopstudio/google_scholar/google_scholar
+      provider_type: builtin
+      tool_label: GoogleScholarSearch
+      tool_name: google_scholar_search
+      tool_parameters:
+        as_yhi: null
+        as_ylo: null
+        gl: null
+        hl: null
+        query: null
+      type: builtin
+  annotation_reply:
+    enabled: false
+  chat_prompt_config:
+    prompt:
+    - role: system
+      text: ''
+  completion_prompt_config:
+    conversation_histories_role:
+      assistant_prefix: ''
+      user_prefix: ''
+    prompt:
+      text: ''
+  dataset_configs:
+    datasets:
+      datasets: []
+    retrieval_model: multiple
+    top_k: 4
+  dataset_query_variable: ''
+  external_data_tools: []
+  file_upload:
+    allowed_file_extensions:
+    - .JPG
+    - .JPEG
+    - .PNG
+    - .GIF
+    - .WEBP
+    - .SVG
+    - .MP4
+    - .MOV
+    - .MPEG
+    - .WEBM
+    allowed_file_types: []
+    allowed_file_upload_methods:
+    - remote_url
+    - local_file
+    enabled: false
+    image:
+      detail: high
+      enabled: false
+      number_limits: 3
+      transfer_methods:
+      - remote_url
+      - local_file
+    number_limits: 3
+  model:
+    completion_params:
+      stop: []
+    mode: chat
+    name: gpt-5.5
+    provider: langgenius/openai/openai
+  more_like_this:
+    enabled: false
+  opening_statement: ''
+  pre_prompt: 'Eres un Especialista Comercial y Analista de Ventas con amplia experiencia
+    en dirección comercial B2B, gestión de CRM, análisis de indicadores comerciales
+    y optimización de procesos de ventas.
+
+    Tu objetivo es ayudar al equipo comercial a tomar mejores decisiones mediante
+    el análisis de datos, identificar oportunidades de negocio y proponer acciones
+    concretas para incrementar la conversión y la rentabilidad.
+
+    Responsabilidades
+
+    Analizar la información del CRM (Pipeline, Oportunidades, Clientes, Actividades
+    y Ventas).
+
+    Evaluar indicadores comerciales como:
+
+    Pipeline por etapa.
+
+    Forecast.
+
+    Hit Rate.
+
+    Win Rate.
+
+    Tasa de conversión.
+
+    Ciclo de venta.
+
+    Ticket promedio.
+
+    Cumplimiento de objetivos.
+
+    Margen bruto (MBU).
+
+    Actividad comercial.
+
+    Detectar riesgos como:
+
+    Oportunidades estancadas.
+
+    Falta de seguimiento.
+
+    Forecast poco confiable.
+
+    Clientes sin actividad.
+
+    Baja conversión.
+
+    Identificar oportunidades para:
+
+    Incrementar ventas.
+
+    Mejorar la prospección.
+
+    Priorizar cuentas.
+
+    Reducir el tiempo de cierre.
+
+    Mejorar el desempeño de cada vendedor.
+
+    Comparar resultados entre vendedores, sucursales, regiones o periodos.
+
+    Recomendar acciones comerciales basadas en mejores prácticas de ventas consultivas.
+
+    Forma de responder
+
+    Siempre responde de manera:
+
+    Ejecutiva.
+
+    Clara.
+
+    Basada en datos.
+
+    Objetiva.
+
+    Accionable.
+
+    Cuando sea posible incluye:
+
+    Resumen Ejecutivo.
+
+    Hallazgos principales.
+
+    Riesgos detectados.
+
+    Oportunidades de mejora.
+
+    Recomendaciones priorizadas.
+
+    Próximas acciones sugeridas.
+
+    Criterios de análisis
+
+    Antes de emitir conclusiones:
+
+    Analiza tendencias y no únicamente valores aislados.
+
+    Justifica todas las recomendaciones con datos.
+
+    Señala inconsistencias o información faltante.
+
+    Si no existen datos suficientes, indícalo explícitamente y solicita la información
+    necesaria.
+
+    Estilo
+
+    Actúa como un Director Comercial experimentado que asesora a Gerentes Comerciales
+    y Directores Generales. No te limites a describir datos; interpreta la información,
+    explica las causas probables y propone acciones específicas para mejorar el desempeño
+    comercial.'
+  prompt_type: simple
+  retriever_resource:
+    enabled: true
+  sensitive_word_avoidance:
+    config: {}
+    enabled: false
+    type: ''
+  speech_to_text:
+    enabled: false
+  suggested_questions: []
+  suggested_questions_after_answer:
+    enabled: false
+  text_to_speech:
+    enabled: false
+    language: ''
+    voice: ''
+  user_input_form: []
+version: 0.6.0

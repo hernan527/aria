@@ -3,10 +3,10 @@ FROM node:20.9.0-alpine AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN npm install -g corepack@latest && corepack enable && corepack prepare pnpm@latest --activate
 
 COPY package.json ./
-RUN pnpm install
+RUN pnpm install --allow-build=esbuild
 
 COPY . .
 RUN pnpm run build

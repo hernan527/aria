@@ -1,0 +1,267 @@
+app:
+  description: Your job is to take the raw, messy user input provided below and transform
+    it into a perfectly structured, development-ready Jira User Story.
+  icon: 📈
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: AI Business Analyst
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/openai:1.0.4@3b49ff900a77c9b2cfba21e3cd1180fbfd7edf5ec008bc20564541c7a3914295
+    version: null
+kind: app
+version: 0.7.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 50
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        knowledge_file_size_limit: 15
+        single_chunk_attachment_limit: 10
+        skill_file_size_limit: 50
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: llm
+      id: 1788868978282-source-1788868988595-target
+      selected: false
+      source: '1788868978282'
+      sourceHandle: source
+      target: '1788868988595'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: llm
+      id: 1788868988595-source-1788869830383-target
+      selected: false
+      source: '1788868988595'
+      sourceHandle: source
+      target: '1788869830383'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: end
+      id: 1788869830383--1788870370793-target
+      selected: false
+      source: '1788869830383'
+      sourceHandle: source
+      target: '1788870370793'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: User Input
+        type: start
+        variables: []
+      height: 73
+      id: '1788868978282'
+      position:
+        x: 0
+        y: 0
+      positionAbsolute:
+        x: 0
+        y: 0
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gpt-5
+          provider: langgenius/openai/openai
+        prompt_template:
+        - id: 90ed0a40-1a37-4620-b4fb-01c358e2a146
+          role: system
+          text: 'You are an expert AI Business Analyst. Your job is to take the raw,
+            messy user input provided below and transform it into a perfectly structured,
+            development-ready Jira User Story.
+
+
+            ### INPUT TEXT:
+
+            {{#sys.files#}}x}
+
+
+            ### YOUR TASK:
+
+            Format your output exactly like this:
+
+            1. **User Story**: As a [Type of User], I want to [Action/Goal], so that
+            [Business Value/Benefit].
+
+            2. **Acceptance Criteria**: Provide 3-4 specific, testable bullet points
+            using the "Given-When-Then" framework where appropriate.
+
+            3. **Assumptions/Risks**: Identify 1-2 potential technical or business
+            edge cases the engineering team should watch out for.'
+        selected: false
+        title: LLM
+        type: llm
+        vision:
+          enabled: false
+      height: 88
+      id: '1788868988595'
+      position:
+        x: 342
+        y: 4.666666666666661
+      positionAbsolute:
+        x: 342
+        y: 4.666666666666661
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        context:
+          enabled: true
+          variable_selector:
+          - '1788868988595'
+          - text
+        desc: Auditor Agent
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gpt-5
+          provider: langgenius/openai/openai
+        prompt_template:
+        - id: 5aff928f-6762-451f-b785-e18c0e303f81
+          role: system
+          text: 'You are a Critical Quality Assurance Business Analyst. Your job is
+            to review the draft Jira User Story generated by the previous agent and
+            optimize it for absolute technical clarity.
+
+
+            ### DRAFT USER STORY TO REVIEW:
+
+            {{llm.text}}
+
+
+            ### YOUR TASK:
+
+            1. **Critique**: Analyze the draft. Are the acceptance criteria vague?
+            Did the previous agent miss any obvious operational or security risks?
+
+            2. **Final Optimized Output**: Provide the absolute best, highly refined
+            version of the User Story, Acceptance Criteria, and Risks based on your
+            critique. Ensure it is completely bulletproof for a software engineering
+            team.'
+        selected: false
+        title: LLM 2
+        type: llm
+        vision:
+          enabled: false
+      height: 116
+      id: '1788869830383'
+      position:
+        x: 684
+        y: 5.333333333333339
+      positionAbsolute:
+        x: 684
+        y: 5.333333333333339
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        outputs:
+        - value_selector:
+          - '1788869830383'
+          - text
+          value_type: string
+          variable: text
+        selected: false
+        title: Output 2
+        type: end
+      height: 88
+      id: '1788870370793'
+      position:
+        x: 1026
+        y: 38.666666666666686
+      positionAbsolute:
+        x: 1026
+        y: 38.666666666666686
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    viewport:
+      x: 84.9182218876391
+      y: 358.40171432619434
+      zoom: 0.6960244143998016
+  rag_pipeline_variables: []

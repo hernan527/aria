@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import { formatNumber, formatDuration, formatPercent, startOfDay, endOfDay } from '../lib/utils'
@@ -8,7 +9,8 @@ import { Badge } from '../components/ui/Badge'
 import {
   MessageSquare, Clock, Target, DollarSign,
   Bot, Send, Timer, TrendingUp, RefreshCw,
-  Calendar, ChevronDown,
+  Calendar, ChevronDown, Zap, Flame, Thermometer, Snowflake,
+  ShieldCheck, Megaphone, ArrowRight,
 } from 'lucide-react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -45,11 +47,16 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function Dashboard() {
   const { project } = useAuth()
+  const navigate = useNavigate()
   const [range, setRange] = useState(RANGES[1])
   const [metrics, setMetrics] = useState(null)
   const [chartData, setChartData] = useState([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState(null)
+  const [lucasEnabled, setLucasEnabled] = useState(false)
+  const [lucasSummary, setLucasSummary] = useState({ frio: 0, tibio: 0, caliente: 0 })
+  const [lucasTop, setLucasTop] = useState([])
+  const [billing, setBilling] = useState(null)
 
   const projectId = project?._id || project?.id
 
@@ -120,10 +127,36 @@ export default function Dashboard() {
 
   useEffect(() => { load() }, [projectId, range])
 
+  useEffect(() => {
+    api.getAiScoringSettings().then(r => {
+      const on = !!r?.enabled
+      setLucasEnabled(on)
+      if (on) {
+        api.getAiScoringSummary().then(setLucasSummary).catch(() => {})
+        api.getAiScoringTop(5).then(setLucasTop).catch(() => {})
+      }
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => { api.getBillingStatus().then(setBilling).catch(() => {}) }, [])
+
   const funnelMax = metrics?.funnel?.prospect || 1
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {/* Banner de límite de plan */}
+      {billing?.messagesLimitReached && (
+        <div className="mb-6 px-4 py-3 rounded-xl border border-red-500/30 bg-red-500/10 flex items-center justify-between gap-3">
+          <p className="text-sm text-red-300">
+            Llegaste al límite de créditos AI de tu plan ({billing.plan?.name}) — tus agentes dejaron de responder solos hasta que actualices el plan o empiece el próximo mes.
+          </p>
+          <button onClick={() => navigate('/settings?tab=plan')}
+            className="shrink-0 px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-medium transition-colors whitespace-nowrap">
+            Actualizar plan
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -326,6 +359,97 @@ export default function Dashboard() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Agentes IA */}
+      <div className="mt-6">
+        <h2 className="text-sm font-semibold text-white mb-1">Tus agentes IA</h2>
+        <p className="text-xs text-white/30 mb-4">Cada agente tiene un rol específico en tu proceso comercial</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Lucas — calificador, funcional */}
+          <div className="card lg:col-span-1">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg bg-indigo-500/15 flex items-center justify-center">
+                <Zap size={14} className="text-indigo-400" />
+              </div>
+              <h3 className="text-sm font-semibold text-white">Lucas</h3>
+            </div>
+            <p className="text-[11px] text-white/30 mb-3">Analista de Conversaciones y Scoring</p>
+
+            {!lucasEnabled ? (
+              <div className="py-4 text-center">
+                <p className="text-[11px] text-white/35 mb-3">
+                  Activá a Lucas para que califique tus leads por temperatura y score automáticamente.
+                </p>
+                <button
+                  onClick={() => navigate('/settings')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg transition-colors"
+                >
+                  Activar análisis con IA <ArrowRight size={12} />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="text-center p-2 rounded-lg bg-blue-500/10">
+                    <Snowflake size={12} className="text-blue-400 mx-auto mb-1" />
+                    <p className="text-sm font-bold text-white">{lucasSummary.frio}</p>
+                    <p className="text-[9px] text-white/30">Frío</p>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-amber-500/10">
+                    <Thermometer size={12} className="text-amber-400 mx-auto mb-1" />
+                    <p className="text-sm font-bold text-white">{lucasSummary.tibio}</p>
+                    <p className="text-[9px] text-white/30">Tibio</p>
+                  </div>
+                  <div className="text-center p-2 rounded-lg bg-red-500/10">
+                    <Flame size={12} className="text-red-400 mx-auto mb-1" />
+                    <p className="text-sm font-bold text-white">{lucasSummary.caliente}</p>
+                    <p className="text-[9px] text-white/30">Caliente</p>
+                  </div>
+                </div>
+                {lucasTop.length > 0 && (
+                  <div className="space-y-1 pt-2 border-t border-white/5">
+                    <p className="text-[10px] text-white/30 mb-1.5">Leads calientes recientes</p>
+                    {lucasTop.slice(0, 4).map(l => (
+                      <div key={l.contact_id} className="flex items-center justify-between text-[11px]">
+                        <span className="text-white/60 truncate">{l.name || l.phone}</span>
+                        <span className="text-white/40 font-mono">{l.score}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Axel — próximamente */}
+          <div className="card lg:col-span-1 opacity-50">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center">
+                <ShieldCheck size={14} className="text-white/40" />
+              </div>
+              <h3 className="text-sm font-semibold text-white">Axel</h3>
+              <Badge variant="default">Próximamente</Badge>
+            </div>
+            <p className="text-[11px] text-white/30">
+              Auditor Comercial: evalúa el desempeño de tus vendedores, mide SLA de respuesta y detecta fugas en el proceso de venta.
+            </p>
+          </div>
+
+          {/* Tobías — próximamente */}
+          <div className="card lg:col-span-1 opacity-50">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center">
+                <Megaphone size={14} className="text-white/40" />
+              </div>
+              <h3 className="text-sm font-semibold text-white">Tobías</h3>
+              <Badge variant="default">Próximamente</Badge>
+            </div>
+            <p className="text-[11px] text-white/30">
+              Gestor de Campañas: reactiva leads fríos con mensajes salientes personalizados por WhatsApp.
+            </p>
+          </div>
         </div>
       </div>
 

@@ -1,0 +1,479 @@
+app:
+  description: Enter any keyword to fetch real-time Google search results via Bright
+    Data SERP API and generate an AI-powered SEO analysis report — including top-ranking
+    site trends, search intent, and keyword suggestions.
+  icon: 🔍
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: workflow
+  name: Lead Extractor & Outreach Generator
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/gemini:0.7.20@de0063a630a6d1b2c025fb84f3462ba5151fb60618309cd595c3f4711b1df847
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables:
+  - description: ''
+    id: 17578eb1-3658-4f0b-9799-f3ccbeb47e23
+    name: BRIGHT_DATA_ZONE
+    selector:
+    - env
+    - BRIGHT_DATA_ZONE
+    value: serp_api1
+    value_type: string
+  - description: ''
+    id: 12239210-3017-494a-b230-72142391e493
+    name: BRIGHT_DATA_API_KEY
+    selector:
+    - env
+    - BRIGHT_DATA_API_KEY
+    value: ''
+    value_type: secret
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 50
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: llm
+      id: 1775115680840-source-1775115686379-target
+      selected: false
+      source: '1775115680840'
+      sourceHandle: source
+      target: '1775115686379'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: end
+      id: 1775115686379-source-1775115713101-target
+      selected: false
+      source: '1775115686379'
+      sourceHandle: source
+      target: '1775115713101'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: template-transform
+        targetType: http-request
+      id: 1775125248383-source-1775115680840-target
+      selected: false
+      source: '1775125248383'
+      sourceHandle: source
+      target: '1775115680840'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: code
+      id: 1775115670933-source-1775125451368-target
+      selected: false
+      source: '1775115670933'
+      sourceHandle: source
+      target: '1775125451368'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: template-transform
+      id: 1775125451368-source-1775125248383-target
+      source: '1775125451368'
+      sourceHandle: source
+      target: '1775125248383'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: true
+        title: ユーザー入力
+        type: start
+        variables:
+        - default: AI productivity tools 2026
+          hide: false
+          hint: ''
+          label: Target Keyword
+          options: []
+          placeholder: ''
+          required: true
+          type: text-input
+          variable: keyword
+        - default: en
+          hint: ''
+          label: Language Code (e.g. en, ja, fr)
+          max_length: 2
+          options: []
+          placeholder: ''
+          required: false
+          type: text-input
+          variable: language
+        - default: none
+          hint: ''
+          label: 'Your Company Name '
+          options: []
+          placeholder: ''
+          required: false
+          type: text-input
+          variable: company_name
+        - default: none
+          hint: ''
+          label: Product Name
+          options: []
+          placeholder: ''
+          required: false
+          type: text-input
+          variable: product_name
+        - default: none
+          hint: ''
+          label: 'Value Proposition '
+          options: []
+          placeholder: ''
+          required: false
+          type: paragraph
+          variable: selling_points
+      height: 213
+      id: '1775115670933'
+      position:
+        x: -115.51691995333778
+        y: 295.64144909859357
+      positionAbsolute:
+        x: -115.51691995333778
+        y: 295.64144909859357
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        authorization:
+          config:
+            api_key: '{{#env.BRIGHT_DATA_API_KEY#}}'
+            type: bearer
+          type: api-key
+        body:
+          data:
+          - id: key-value-491
+            key: ''
+            type: text
+            value: "{\n  \"zone\": {{#env.BRIGHT_DATA_ZONE#}},\n  \"url\": {{#1775125248383.output#}},\n\
+              \  \"format\": \"json\",\n  \"data_format\": \"parsed\",\n  \"method\"\
+              : \"GET\"\n}"
+          type: json
+        headers: Content-Type:application/json
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: HTTP リクエスト
+        type: http-request
+        url: https://api.brightdata.com/request
+        variables: []
+      height: 138
+      id: '1775115680840'
+      position:
+        x: 694.2469360485636
+        y: 316.64144909859357
+      positionAbsolute:
+        x: 694.2469360485636
+        y: 316.64144909859357
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        model:
+          completion_params:
+            temperature: 0.7
+          mode: chat
+          name: gemini-flash-latest
+          provider: langgenius/gemini/google
+        prompt_config:
+          jinja2_variables: []
+        prompt_template:
+        - edition_type: basic
+          id: ec4a9495-380a-4d18-bb60-fbe6676af70a
+          jinja2_text: ''
+          role: system
+          text: 'You are an expert B2B Sales Intelligence and Outreach AI.
+
+            Always respond entirely in the language specified by the user. (e.g.,
+            if "ja", use natural Japanese business etiquette).
+
+
+            You will receive Google search results data based on the user''s target
+            keyword, along with the user''s company and product information (if provided).
+
+
+            Your task is to analyze the search results, identify the best potential
+            B2B leads, and write highly personalized cold outreach emails pitching
+            the user''s product.
+
+
+            Your output MUST be formatted in Markdown with the following sections:
+
+
+            ## 1. Lead List Overview
+
+            Briefly summarize the types of companies/websites found in the search
+            results and why they might need the user''s service.
+
+
+            ## 2. Top 5 Prospect Sites
+
+            For the 5 most promising sites, provide a table with:
+
+            - Site Name & Domain
+
+            - Estimated Business Type
+
+            - Recommended Contact Role (e.g., CMO, CTO, E-commerce Manager)
+
+            - Why they are a good fit (Pain point hypothesis)
+
+
+            ## 3. Personalized Outreach Emails (Top 3)
+
+            Write a distinct, ready-to-send cold email for the top 3 prospects from
+            your list.
+
+            CRITICAL INSTRUCTIONS FOR EMAILS:
+
+            - If "Company Name", "Product Name", or "Value Proposition" are provided,
+            you MUST seamlessly integrate them into the email.
+
+            - Highlight a specific hypothesis about the prospect''s business based
+            on their website type.
+
+            - Keep emails concise, professional, and focused on value.
+
+            - Include a clear Call to Action (CTA).
+
+            - If sender information is missing, use placeholders like [Your Company]
+            and write a generic but effective pitch related to the search keyword.'
+        - id: 98705baf-f0e8-43e4-b2d5-fe63c8996d60
+          role: user
+          text: '# User Intent & Context
+
+            Search Keyword: {{#1775115670933.keyword#}}
+
+            Language: {{#1775125451368.hl#}}
+
+
+            # Sender Information (Optional)
+
+            Company Name: {{#1775115670933.company_name#}}
+
+            Product/Service Name: {{#1775115670933.product_name#}}
+
+            Value Proposition & Selling Points: {{#1775115670933.selling_points#}}
+
+
+            # Search Results Data
+
+            {{#1775115680840.body#}}'
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 1000
+        selected: false
+        structured_output_enabled: true
+        title: LLM
+        type: llm
+        vision:
+          enabled: false
+      height: 118
+      id: '1775115686379'
+      position:
+        x: 957.4491773221805
+        y: 316.64144909859357
+      positionAbsolute:
+        x: 957.4491773221805
+        y: 316.64144909859357
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        outputs:
+        - value_selector:
+          - '1775115686379'
+          - text
+          value_type: string
+          variable: text
+        selected: false
+        title: 出力
+        type: end
+      height: 88
+      id: '1775115713101'
+      position:
+        x: 1223.9954709843971
+        y: 316.64144909859357
+      positionAbsolute:
+        x: 1223.9954709843971
+        y: 316.64144909859357
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        selected: false
+        template: https://www.google.com/search?q={{ encoded_keyword }}&brd_json=1&num=10&udm=14&hl={{
+          hl }}&gl={{ gl }}
+        title: テンプレート
+        type: template-transform
+        variables:
+        - value_selector:
+          - '1775125451368'
+          - encoded_keyword
+          value_type: string
+          variable: encoded_keyword
+        - value_selector:
+          - '1775125451368'
+          - hl
+          value_type: string
+          variable: hl
+        - value_selector:
+          - '1775125451368'
+          - gl
+          value_type: string
+          variable: gl
+      height: 52
+      id: '1775125248383'
+      position:
+        x: 424.81640542122614
+        y: 316.64144909859357
+      positionAbsolute:
+        x: 424.81640542122614
+        y: 316.64144909859357
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import urllib.parse\n\ndef main(keyword: str, language: str) -> dict:\n\
+          \    encoded = urllib.parse.quote_plus(keyword)\n    \n    lang = language.strip().lower()\
+          \ if language.strip() else \"en\"\n    \n    gl_map = {\"ja\": \"jp\", \"\
+          en\": \"us\", \"fr\": \"fr\", \"de\": \"de\", \"ko\": \"kr\"}\n    \n  \
+          \  return {\n        \"encoded_keyword\": encoded,\n        \"hl\": lang,\n\
+          \        \"gl\": gl_map.get(lang, \"us\")\n    }"
+        code_language: python3
+        outputs:
+          encoded_keyword:
+            children: null
+            type: string
+          gl:
+            children: null
+            type: string
+          hl:
+            children: null
+            type: string
+        selected: false
+        title: コード実行
+        type: code
+        variables:
+        - value_selector:
+          - '1775115670933'
+          - keyword
+          value_type: string
+          variable: keyword
+        - value_selector:
+          - '1775115670933'
+          - language
+          value_type: string
+          variable: language
+      height: 52
+      id: '1775125451368'
+      position:
+        x: 155.23502902001388
+        y: 316.64144909859357
+      positionAbsolute:
+        x: 155.23502902001388
+        y: 316.64144909859357
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: -41.88656489620257
+      y: 141.543383339289
+      zoom: 0.870550563296124
+  rag_pipeline_variables: []

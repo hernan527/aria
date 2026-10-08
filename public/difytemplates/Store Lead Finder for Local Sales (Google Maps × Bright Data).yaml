@@ -1,0 +1,597 @@
+app:
+  description: "Google Mapsから業種×地域で店舗を抽出し、自社サービスに応じた営業ターゲットレポートを生成。抽出件数（30〜100件）と抽出モード（全店舗 / デジタル弱い店のみ / 既存サイトあり店のみ）を入力で切り替え可能。チェーン店は自動除外。Web制作・SNS運用代行・DXコンサル・MEO・広告運用代行など、店舗営業全般に汎用利用できます。. Setup: get your Bright Data API token at https://get.brightdata.com/tp1oc (existing promo codes still apply)."
+  icon: "\U0001F50D"
+  icon_background: '#E8F4FD'
+  mode: workflow
+  name: "店舗営業リード発掘（Google Maps × Bright Data）"
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.1.5
+workflow:
+  conversation_variables: []
+  environment_variables:
+  - description: "Bright Data API token"
+    id: brd-api-token
+    name: BRIGHTDATA_API_TOKEN
+    selector:
+    - env
+    - BRIGHTDATA_API_TOKEN
+    value: REPLACE_WITH_YOUR_BRIGHTDATA_TOKEN
+    value_type: string
+  - description: "Bright Data SERP zone name"
+    id: brd-serp-zone
+    name: BRIGHTDATA_SERP_ZONE
+    selector:
+    - env
+    - BRIGHTDATA_SERP_ZONE
+    value: serp_api1
+    value_type: string
+  features:
+    file_upload:
+      allowed_file_extensions: []
+      allowed_file_types: []
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        sourceType: start
+        targetType: code
+      id: e1
+      source: 'node_start'
+      sourceHandle: source
+      target: 'node_code_url'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: http-request
+      id: e2
+      source: 'node_code_url'
+      sourceHandle: source
+      target: 'node_http_serp'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: http-request
+        targetType: code
+      id: e3
+      source: 'node_http_serp'
+      sourceHandle: source
+      target: 'node_code_analyze'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: code
+        targetType: llm
+      id: e4
+      source: 'node_code_analyze'
+      sourceHandle: source
+      target: 'node_llm_report'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        sourceType: llm
+        targetType: end
+      id: e5
+      source: 'node_llm_report'
+      sourceHandle: source
+      target: 'node_end'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: '業種・地域・自社サービス・抽出設定を入力'
+        selected: false
+        title: Start
+        type: start
+        variables:
+        - label: "業種（例: 飲食店、美容院、整体院、エステ、整骨院、雑貨店）"
+          max_length: 100
+          options: []
+          required: true
+          type: text-input
+          variable: industry
+        - label: "地域（例: 立川市、渋谷区、福岡市中央区）"
+          max_length: 100
+          options: []
+          required: true
+          type: text-input
+          variable: area
+        - label: "自社サービス（例: ホームページ制作 / SNS運用代行 / DXコンサル / Google広告運用代行）"
+          max_length: 300
+          options: []
+          required: true
+          type: text-input
+          variable: service
+        - label: "抽出モード（all=全店舗 / digital_weak=Webサイトなし・古い店のみ / has_website=サイトあり店のみ）"
+          max_length: 30
+          options:
+          - all
+          - digital_weak
+          - has_website
+          required: true
+          type: select
+          variable: filter_mode
+          default: all
+        - label: "最大取得件数（10〜100、推奨30）"
+          max_length: 4
+          options: []
+          required: true
+          type: text-input
+          variable: max_results
+          default: "30"
+        - label: "ターゲット観点（任意・例: Webサイトなし、SNS未運用そう、口コミ多いのに発信弱い、HPあるが古い、英語対応なし）"
+          max_length: 500
+          options: []
+          required: false
+          type: paragraph
+          variable: target_focus
+        - label: "営業時のトーン（任意・例: 親しみやすく、提案重視、データドリブンに、初回接触として丁寧に）"
+          max_length: 200
+          options: []
+          required: false
+          type: text-input
+          variable: tone
+      height: 200
+      id: 'node_start'
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: "import urllib.parse\nimport json\n\ndef main(industry: str, area: str, zone: str) -> dict:\n    query = f'{industry} {area}'\n    encoded = urllib.parse.quote(query)\n    # Google Maps直接検索URL + brd_json=1 で構造化データ取得\n    maps_url = f'https://www.google.com/maps/search/{encoded}/?brd_json=1'\n    body = json.dumps({\n        'zone': zone,\n        'url': maps_url,\n        'format': 'json',\n        'country': 'jp'\n    })\n    return {'request_body': body, 'search_query': query}"
+        code_language: python3
+        desc: 'Google Maps ローカル検索URL組み立て'
+        outputs:
+          request_body:
+            children: null
+            type: string
+          search_query:
+            children: null
+            type: string
+        selected: false
+        title: Build Search URL
+        type: code
+        variables:
+        - value_selector:
+          - 'node_start'
+          - industry
+          variable: industry
+        - value_selector:
+          - 'node_start'
+          - area
+          variable: area
+        - value_selector:
+          - env
+          - BRIGHTDATA_SERP_ZONE
+          variable: zone
+      height: 54
+      id: 'node_code_url'
+      position:
+        x: 384
+        y: 282
+      positionAbsolute:
+        x: 384
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data:
+          - id: b1
+            key: ''
+            type: text
+            value: '{{#node_code_url.request_body#}}'
+          type: json
+        desc: 'Bright Data SERP APIでGoogle Maps結果を取得'
+        headers: "Authorization:Bearer {{#env.BRIGHTDATA_API_TOKEN#}}\nContent-Type:application/json"
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        timeout:
+          max_connect_timeout: 10
+          max_read_timeout: 60
+          max_write_timeout: 10
+        title: Search Google Maps
+        type: http-request
+        url: https://api.brightdata.com/request
+        variables: []
+      height: 130
+      id: 'node_http_serp'
+      position:
+        x: 688
+        y: 282
+      positionAbsolute:
+        x: 688
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        code: |
+          import json
+
+          def main(body: str, filter_mode: str = 'all', max_results: str = '30') -> dict:
+              try:
+                  data = json.loads(body) if isinstance(body, str) else body
+              except Exception:
+                  return {'report_data': '[]', 'total': 0, 'no_site': 0, 'old_site': 0, 'has_site': 0}
+
+              if isinstance(data, dict) and 'body' in data:
+                  try:
+                      inner = data['body']
+                      data = json.loads(inner) if isinstance(inner, str) else inner
+                  except Exception:
+                      pass
+
+              try:
+                  limit = max(10, min(100, int(str(max_results).strip() or 30)))
+              except Exception:
+                  limit = 30
+              mode = (filter_mode or 'all').strip().lower()
+              if mode not in ('all', 'digital_weak', 'has_website'):
+                  mode = 'all'
+
+              CHAINS = [
+                  'マクドナルド','スターバックス','すき家','吉野家','松屋','セブンイレブン',
+                  'ファミリーマート','ローソン','ドトール','タリーズ','ガスト','サイゼリヤ',
+                  'ケンタッキー','モスバーガー','バーミヤン','CoCo壱','スシロー','くら寿司',
+                  'はま寿司','かっぱ寿司','鳥貴族','串カツ田中','コメダ','サンマルク',
+                  'ユニクロ','ダイソー','ニトリ','無印良品','ドンキ','QBハウス',
+                  'りらくる','ラフィネ','カーブス','エニタイム','とんでん','梅の花',
+                  'McDonald','Starbucks','KFC','Subway',
+              ]
+              FREE_HOSTS = ['geocities','t-net.ne.jp','nifty.com','biglobe.ne.jp',
+                            'fc2.com','web.fc2','ameblo.jp','ne.jp/asahi',
+                            'wordpress.com','blogspot','livedoor.blog']
+              PORTALS = ['hotpepper.jp','tabelog.com','hitosara.com','gnavi.co.jp',
+                         'retty.me','epark.jp']
+              SNS_ONLY = ['instagram.com','twitter.com','x.com/']
+
+              def is_chain(name):
+                  return any(c.lower() in name.lower() for c in CHAINS)
+
+              def get_category_str(cat):
+                  if isinstance(cat, list):
+                      return ', '.join(c.get('title','') if isinstance(c,dict) else str(c) for c in cat[:3])
+                  return str(cat) if cat else ''
+
+              def classify_website(url):
+                  if not url or url.strip() == '':
+                      return 'NO_WEBSITE', ['Webサイトなし']
+                  if 'google.com' in url or 'goo.gl' in url:
+                      return 'NO_WEBSITE', ['Webサイトなし（Googleプロフィールのみ）']
+                  issues = []
+                  if any(p in url for p in PORTALS):
+                      issues.append('ポータルサイトのみ（自前サイトなし）: ' + url)
+                  if any(s in url for s in SNS_ONLY):
+                      issues.append('SNSのみ（自前サイトなし）: ' + url)
+                  if url.startswith('http://') and not url.startswith('https://'):
+                      issues.append('SSL未対応（httpのみ）')
+                  if any(h in url.lower() for h in FREE_HOSTS):
+                      issues.append('無料/旧型ホスティング使用')
+                  if issues:
+                      return 'NEEDS_RENEWAL', issues
+                  return 'HAS_WEBSITE', []
+
+              leads = []
+              def push(row, src):
+                  name = row.get('name') or row.get('title') or ''
+                  if not name or is_chain(name):
+                      return
+                  website = row.get('website') or row.get('url') or row.get('link') or ''
+                  if 'google.com' in website or 'goo.gl' in website:
+                      website = ''
+                  lead_type, issues = classify_website(website)
+                  # フィルタモードに応じて除外
+                  if mode == 'digital_weak' and lead_type == 'HAS_WEBSITE':
+                      return
+                  if mode == 'has_website' and lead_type == 'NO_WEBSITE':
+                      return
+                  # mode == 'all' は全部保持
+                  import urllib.parse as up
+                  map_id = row.get('map_id') or ''
+                  if map_id and ':' in map_id:
+                      cid_hex = map_id.split(':')[1]
+                      try:
+                          cid_dec = int(cid_hex, 16)
+                          maps_link = f'https://www.google.com/maps?cid={cid_dec}'
+                      except Exception:
+                          maps_link = f'https://www.google.com/maps/search/?api=1&query={up.quote(name)}'
+                  else:
+                      maps_link = f'https://www.google.com/maps/search/?api=1&query={up.quote(name + " " + (row.get("address") or ""))}'
+                  leads.append({
+                      'name': name,
+                      'website': website,
+                      'lead_type': lead_type,
+                      'issues': issues,
+                      'category': get_category_str(row.get('category') or row.get('type') or ''),
+                      'address': row.get('address') or row.get('formatted_address') or '',
+                      'phone': row.get('phone') or row.get('phone_number') or '',
+                      'rating': float(row.get('rating') or row.get('reviews_score') or 0),
+                      'review_count': int(row.get('reviews_cnt') or row.get('reviews_count') or 0),
+                      'maps_link': maps_link,
+                  })
+
+              # SERP API は raw データを多めに返してくるので、limit より大きく取りつつ後段で絞る
+              raw_pool = limit * 2
+              if isinstance(data, list):
+                  for r in data[:raw_pool]:
+                      if isinstance(r, dict):
+                          push(r, 'list')
+              elif isinstance(data, dict):
+                  for key in ['organic','snack_pack','local_results','places','results']:
+                      for r in (data.get(key, []) or [])[:raw_pool]:
+                          push(r, key)
+
+              seen = set()
+              unique = []
+              for l in leads:
+                  key = l['name'].lower()
+                  if key in seen:
+                      continue
+                  seen.add(key)
+                  unique.append(l)
+
+              # 評価 × レビュー数で並べ替えて上位 limit 件のみ返す
+              unique.sort(key=lambda x: (x['rating'], x['review_count']), reverse=True)
+              unique = unique[:limit]
+
+              no_site = sum(1 for l in unique if l['lead_type'] == 'NO_WEBSITE')
+              old_site = sum(1 for l in unique if l['lead_type'] == 'NEEDS_RENEWAL')
+              has_site = sum(1 for l in unique if l['lead_type'] == 'HAS_WEBSITE')
+
+              return {
+                  'report_data': json.dumps(unique, ensure_ascii=False),
+                  'total': len(unique),
+                  'no_site': no_site,
+                  'old_site': old_site,
+                  'has_site': has_site
+              }
+        code_language: python3
+        desc: '店舗抽出＋Webサイト分類＋チェーン店除外＋モード/件数フィルタ'
+        outputs:
+          report_data:
+            children: null
+            type: string
+          total:
+            children: null
+            type: number
+          no_site:
+            children: null
+            type: number
+          old_site:
+            children: null
+            type: number
+          has_site:
+            children: null
+            type: number
+        selected: false
+        title: Analyze Leads
+        type: code
+        variables:
+        - value_selector:
+          - 'node_http_serp'
+          - body
+          variable: body
+        - value_selector:
+          - 'node_start'
+          - filter_mode
+          variable: filter_mode
+        - value_selector:
+          - 'node_start'
+          - max_results
+          variable: max_results
+      height: 54
+      id: 'node_code_analyze'
+      position:
+        x: 992
+        y: 282
+      positionAbsolute:
+        x: 992
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: 'リード一覧を営業用レポートに整形'
+        model:
+          completion_params:
+            temperature: 0.4
+            max_tokens: 4000
+          mode: chat
+          name: gpt-4o
+          provider: openai
+        prompt_template:
+        - id: report-sys
+          role: system
+          text: |
+            あなたは「{{#node_start.service#}}」を提供する会社の営業マネージャーです。
+            Google Mapsから抽出した店舗データを分析し、自社サービスの営業ターゲットとして使えるリードレポートを作成してください。
+
+            ## 入力データの前処理について
+            あらかじめ次の処理が適用済みです：
+            - チェーン店は自動除外済み（個人店・地域店中心）
+            - 抽出モード（all / digital_weak / has_website）でフィルタ済み
+            - 評価 × レビュー数で並べ替え済み（上位優先）
+            - 各店舗には Web サイトの状態が `lead_type` として付いています:
+              - `NO_WEBSITE`: Webサイトなし（Googleプロフィール / SNSのみ / ポータルのみ）
+              - `NEEDS_RENEWAL`: サイトはあるが古い / 無料ホスティング / SSL未対応など改善余地あり
+              - `HAS_WEBSITE`: 通常の自社サイトあり
+
+            ## あなたの仕事
+            **店舗を「自社サービス『{{#node_start.service#}}』の営業ターゲットとして優先順位を付けて出力**してください。
+
+            優先順位の判断材料:
+            1. 評価・レビュー数（人気店ほど予算ありの傾向）
+            2. Webサイトの状態（lead_type）
+            3. 業態・カテゴリと自社サービスの相性
+            4. ユーザー指定のターゲット観点（任意入力）
+
+            **Webサイトの状態は「優先度の判定材料の一つ」として扱い、絶対視しないでください。** 自社サービスによっては HAS_WEBSITE の店舗の方が予算もあり営業しやすいケースもあります。
+
+            ## 自社サービス目線での解釈の例
+            - 「Web制作」 → NO_WEBSITE は新規制作、NEEDS_RENEWAL はリニューアル、HAS_WEBSITE は対象外 or アクセス解析提案
+            - 「SNS運用代行」 → 評価高くてWeb弱い店 = SNSで一気に伸びる余地、HAS_WEBSITE店もSNS未運用なら対象
+            - 「DXコンサル」 → 規模感（レビュー数）と Web 状態を見て、本格 DX 余地ある店を選定
+            - 「Google広告/MEO」 → 評価高い店全般がターゲット（Web 基盤の弱さで広告 or MEO の優先順を分ける）
+            - 「予約/決済システム」 → 業態（飲食/美容/医療系）と評価で判断、Web 状態は副次的
+
+            ## 出力フォーマット（Markdown）
+
+            # 「{{#node_start.service#}}」の営業リード一覧
+            **検索条件:** {{#node_start.industry#}} × {{#node_start.area#}}
+            **自社サービス:** {{#node_start.service#}}
+            **抽出モード:** {{#node_start.filter_mode#}}（最大 {{#node_start.max_results#}} 件）
+            **ターゲット観点（任意）:** {{#node_start.target_focus#}}
+            **抽出結果:** 全 {total}件（Webなし {no_site} / 改善余地 {old_site} / サイトあり {has_site}）
+
+            ## 🔴 最優先ターゲット（Top 10）
+            自社サービス目線で最も成約見込みが高い順に:
+            ### 1. {店名}
+            - 📍 住所: xxx
+            - 📞 電話: xxx
+            - ⭐ 評価: ★4.5（120件）
+            - 📋 カテゴリ: xxx
+            - 🌐 Web状態: NO_WEBSITE / NEEDS_RENEWAL / HAS_WEBSITE（具体的な現状を1行で）
+            - 🗺️ [Googleマップで見る](maps_link)
+            - 💡 **「{{#node_start.service#}}」目線での提案ポイント:**
+              （なぜこの店が最優先か、自社サービスを使うとどう改善するか、初回トークの切り口を1〜2文で）
+
+            ## 🟡 次点ターゲット（Top 11〜25）
+            同フォーマットで続ける。
+
+            ## ⚪️ 参考リード（残り全件）
+            店名 / カテゴリ / 評価 / Web状態 のみ簡易リスト形式で。
+
+            ## 📊 この地域×業種への営業戦略
+            1. **アプローチ方法**（電話 / 訪問 / DM / Instagram DM / 問い合わせフォーム など、自社サービスに合った方法）
+            2. **初回トーク例**（最初の一言、自社サービス × 店舗の現状を結ぶ言い回し）
+            3. **提案のポイント**（自社サービスのどの強みが、この業種×地域に刺さるか）
+            4. **想定される反論と切り返し**（2〜3パターン）
+            5. **次のアクション**（リスト化後、明日から何をすべきか）
+
+            ## トーンの指定
+            営業文・提案ポイント・トーク例は **「{{#node_start.tone#}}」** のトーンで書いてください。
+            （未指定の場合は「親しみやすく、押し売り感のない、相手のメリットを最初に伝える」トーンで）
+
+            日本語で、具体的かつ実用的に、店舗オーナーの目線も入れて出力してください。
+        - id: report-user
+          role: user
+          text: |
+            業種: {{#node_start.industry#}}
+            地域: {{#node_start.area#}}
+            自社サービス: {{#node_start.service#}}
+            抽出モード: {{#node_start.filter_mode#}}
+            最大取得件数: {{#node_start.max_results#}}
+            ターゲット観点（任意）: {{#node_start.target_focus#}}
+            営業トーン（任意）: {{#node_start.tone#}}
+
+            抽出結果:
+            - 全 {{#node_code_analyze.total#}}件
+            - Webサイトなし: {{#node_code_analyze.no_site#}}件
+            - 改善余地あり: {{#node_code_analyze.old_site#}}件
+            - サイトあり: {{#node_code_analyze.has_site#}}件
+
+            リードデータ（JSON、評価×レビュー数で降順済み）:
+            {{#node_code_analyze.report_data#}}
+
+            上記のデータから、「{{#node_start.service#}}」目線での営業リードレポートを作成してください。
+        selected: false
+        title: Generate Lead Report
+        type: llm
+        variables: []
+        vision:
+          enabled: false
+      height: 98
+      id: 'node_llm_report'
+      position:
+        x: 1296
+        y: 282
+      positionAbsolute:
+        x: 1296
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - 'node_llm_report'
+          - text
+          variable: report
+        selected: false
+        title: End
+        type: end
+      height: 90
+      id: 'node_end'
+      position:
+        x: 1600
+        y: 282
+      positionAbsolute:
+        x: 1600
+        y: 282
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 244
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7

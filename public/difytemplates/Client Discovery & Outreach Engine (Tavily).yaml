@@ -1,0 +1,944 @@
+app:
+  description: Client Discovery & Outreach Engine. You describe your company, offering,
+    and target industry; it generates discovery searches to find candidate client
+    companies via Tavily, deduplicates them, qualifies and scores each on fit and
+    buying signals, routes them into tiers A/B/C, and drafts a tier-tailored outreach
+    message for each. Outputs a ranked tiered lead list plus ready-to-send draft messages.
+  icon: 🧲
+  icon_background: '#EFF6FF'
+  icon_type: emoji
+  mode: workflow
+  name: Client Discovery & Outreach Engine (Tavily)
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/openai:0.4.3@84d4aae2c55724f6cdaecfadceed061d7e6b6693ae8945ea2dcd155f280743ef
+    version: null
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/tavily:0.1.10@b43f5dc49fbafc69949ee8231d600b23fb7586d514f4c72e470a86af03d2173d
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 50
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: llm
+      id: e-start-prospector
+      source: start_node
+      sourceHandle: source
+      target: prospector_llm
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: e-prospector-pq
+      source: prospector_llm
+      sourceHandle: source
+      target: parse_q_code
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: iteration
+      id: e-pq-disc
+      source: parse_q_code
+      sourceHandle: source
+      target: disc_iter
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: true
+        isInLoop: false
+        iteration_id: disc_iter
+        sourceType: iteration-start
+        targetType: tool
+      id: e-discstart-tv
+      source: disc_iterstart
+      sourceHandle: source
+      target: disc_tavily
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+    - data:
+        isInIteration: true
+        isInLoop: false
+        iteration_id: disc_iter
+        sourceType: tool
+        targetType: llm
+      id: e-disctv-ext
+      source: disc_tavily
+      sourceHandle: source
+      target: extractor_llm
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: iteration
+        targetType: code
+      id: e-disc-dedupe
+      source: disc_iter
+      sourceHandle: source
+      target: dedupe_code
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: iteration
+      id: e-dedupe-qual
+      source: dedupe_code
+      sourceHandle: source
+      target: qual_iter
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: true
+        isInLoop: false
+        iteration_id: qual_iter
+        sourceType: iteration-start
+        targetType: tool
+      id: e-qualstart-profile
+      source: qual_iterstart
+      sourceHandle: source
+      target: q_tv_profile
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+    - data:
+        isInIteration: true
+        isInLoop: false
+        iteration_id: qual_iter
+        sourceType: tool
+        targetType: tool
+      id: e-profile-signals
+      source: q_tv_profile
+      sourceHandle: source
+      target: q_tv_signals
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+    - data:
+        isInIteration: true
+        isInLoop: false
+        iteration_id: qual_iter
+        sourceType: tool
+        targetType: llm
+      id: e-signals-qualifier
+      source: q_tv_signals
+      sourceHandle: source
+      target: qualifier_llm
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: iteration
+        targetType: code
+      id: e-qual-tier
+      source: qual_iter
+      sourceHandle: source
+      target: tier_code
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: llm
+      id: e-tier-outreach
+      source: tier_code
+      sourceHandle: source
+      target: outreach_llm
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: end
+      id: e-outreach-end
+      source: outreach_llm
+      sourceHandle: source
+      target: end_node
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        desc: Describe your company and who you want to reach.
+        selected: false
+        title: Start
+        type: start
+        variables:
+        - label: Your company
+          max_length: 200
+          options: []
+          required: true
+          type: text-input
+          variable: my_company
+        - label: What you offer
+          max_length: 500
+          options: []
+          required: true
+          type: paragraph
+          variable: what_we_offer
+        - label: Target industry
+          max_length: 200
+          options: []
+          required: true
+          type: text-input
+          variable: industry
+        - label: Ideal customer profile (optional)
+          max_length: 500
+          options: []
+          required: false
+          type: paragraph
+          variable: ideal_customer
+      height: 231
+      id: start_node
+      position:
+        x: 80
+        y: 300
+      positionAbsolute:
+        x: 80
+        y: 300
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Generate 5-8 web search queries to FIND candidate client companies.
+        memory:
+          enabled: false
+          window:
+            enabled: false
+            size: 50
+        model:
+          completion_params: {}
+          mode: chat
+          name: gpt-5.5
+          provider: langgenius/openai/openai
+        prompt_template:
+        - role: system
+          text: You help a B2B company find potential clients. Given the seller's
+            company, offering, target industry, and ideal customer profile, write
+            5 to 8 web search queries that would surface LISTS or EXAMPLES of companies
+            that could be buyers (e.g. "fastest growing {industry} companies 2025",
+            "top mid-market {industry} firms hiring", directories, award lists, funding
+            announcements). Aim queries at discovering company names, not generic
+            info. Respond with ONLY a JSON array of query strings, no markdown.
+        - role: user
+          text: 'Seller: {{#start_node.my_company#}}
+
+            Offering: {{#start_node.what_we_offer#}}
+
+            Target industry: {{#start_node.industry#}}
+
+            Ideal customer: {{#start_node.ideal_customer#}}'
+        retry_config:
+          enabled: false
+          exponential_backoff:
+            enabled: false
+            max_interval: 10000
+            multiplier: 2
+          max_retries: 1
+          retry_interval: 1000
+        selected: false
+        structured_output:
+          enabled: false
+        title: Prospector
+        type: llm
+        vision:
+          configs:
+            variable_selector: []
+          enabled: false
+      height: 132
+      id: prospector_llm
+      position:
+        x: 380
+        y: 300
+      positionAbsolute:
+        x: 380
+        y: 300
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import json\n\ndef main(raw: str) -> dict:\n    t = (raw or '').strip()\n\
+          \    if t.startswith('```'):\n        t = t.strip('`')\n        if t.startswith('json'):\n\
+          \            t = t[4:]\n    try:\n        arr = json.loads(t)\n        if\
+          \ not isinstance(arr, list):\n            arr = [str(arr)]\n    except Exception:\n\
+          \        arr = [l.strip('-* ') for l in t.splitlines() if l.strip()]\n \
+          \   return {\"queries\": [str(x) for x in arr][:8]}\n"
+        code_language: python3
+        desc: Parse discovery queries into an array.
+        outputs:
+          queries:
+            children: null
+            type: array[string]
+        selected: false
+        title: Parse Queries
+        type: code
+        variables:
+        - value_selector:
+          - prospector_llm
+          - text
+          variable: raw
+      height: 80
+      id: parse_q_code
+      position:
+        x: 680
+        y: 300
+      positionAbsolute:
+        x: 680
+        y: 300
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        desc: Run each discovery query and extract candidate companies.
+        error_handle_mode: terminated
+        height: 294
+        is_parallel: true
+        iterator_input_type: array[string]
+        iterator_selector:
+        - parse_q_code
+        - queries
+        output_selector:
+        - extractor_llm
+        - text
+        output_type: array[string]
+        parallel_nums: 3
+        selected: false
+        start_node_id: disc_iterstart
+        title: Discovery Loop
+        type: iteration
+        width: 720
+      height: 294
+      id: disc_iter
+      position:
+        x: 980
+        y: 300
+      positionAbsolute:
+        x: 980
+        y: 300
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 720
+      zIndex: 1
+    - data:
+        desc: ''
+        isInIteration: true
+        selected: false
+        title: ''
+        type: iteration-start
+      draggable: false
+      height: 48
+      id: disc_iterstart
+      parentId: disc_iter
+      position:
+        x: 24
+        y: 100
+      positionAbsolute:
+        x: 1004
+        y: 400
+      selectable: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom-iteration-start
+      width: 44
+      zIndex: 1002
+    - data:
+        desc: Search to surface candidate companies.
+        isInIteration: true
+        isInLoop: false
+        iteration_id: disc_iter
+        provider_id: langgenius/tavily/tavily
+        provider_name: langgenius/tavily/tavily
+        provider_type: builtin
+        selected: false
+        title: Discovery Search
+        tool_configurations:
+          include_raw_content:
+            type: constant
+            value: false
+          max_results:
+            type: constant
+            value: 6
+          search_depth:
+            type: constant
+            value: advanced
+          topic:
+            type: constant
+            value: general
+        tool_description: Web search.
+        tool_label: Tavily Search
+        tool_name: tavily_search
+        tool_node_version: '2'
+        tool_parameters:
+          query:
+            type: mixed
+            value: '{{#disc_iter.item#}}'
+        type: tool
+      height: 210
+      id: disc_tavily
+      parentId: disc_iter
+      position:
+        x: 128
+        y: 80
+      positionAbsolute:
+        x: 1108
+        y: 380
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 1002
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Extract candidate company names from search results.
+        isInIteration: true
+        isInLoop: false
+        iteration_id: disc_iter
+        memory:
+          enabled: false
+          window:
+            enabled: false
+            size: 50
+        model:
+          completion_params: {}
+          mode: chat
+          name: gpt-5.5
+          provider: langgenius/openai/openai
+        prompt_template:
+        - role: system
+          text: 'From the search results, extract names of REAL companies that could
+            be potential clients (ignore the seller itself, ignore generic directories
+            or publishers). For each, give the company name and a one-line reason
+            it might fit. Respond with ONLY a JSON array of objects: [{"company":"...","reason":"..."}].
+            If none found, return [].'
+        - role: user
+          text: 'Search query: {{#disc_iter.item#}}
+
+            Results: {{#disc_tavily.text#}}'
+        retry_config:
+          enabled: false
+          exponential_backoff:
+            enabled: false
+            max_interval: 10000
+            multiplier: 2
+          max_retries: 1
+          retry_interval: 1000
+        selected: false
+        structured_output:
+          enabled: false
+        title: Company Extractor
+        type: llm
+        vision:
+          configs:
+            variable_selector: []
+          enabled: false
+      height: 132
+      id: extractor_llm
+      parentId: disc_iter
+      position:
+        x: 412
+        y: 80
+      positionAbsolute:
+        x: 1392
+        y: 380
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 1002
+    - data:
+        code: "import json\n\ndef main(items: list) -> dict:\n    seen = {}\n    for\
+          \ it in (items or []):\n        t = (it or '').strip()\n        if t.startswith('```'):\n\
+          \            t = t.strip('`')\n            if t.startswith('json'):\n  \
+          \              t = t[4:]\n        try:\n            arr = json.loads(t)\n\
+          \        except Exception:\n            arr = []\n        if not isinstance(arr,\
+          \ list):\n            continue\n        for o in arr:\n            if isinstance(o,\
+          \ dict) and o.get('company'):\n                name = str(o['company']).strip()\n\
+          \                key = name.lower()\n                if key and key not\
+          \ in seen:\n                    seen[key] = name\n    companies = list(seen.values())[:10]\n\
+          \    return {\"companies\": companies, \"found\": len(companies)}\n"
+        code_language: python3
+        desc: Merge and dedupe candidate companies into a unique list.
+        outputs:
+          companies:
+            children: null
+            type: array[string]
+          found:
+            children: null
+            type: number
+        selected: false
+        title: Dedupe Companies
+        type: code
+        variables:
+        - value_selector:
+          - disc_iter
+          - output
+          variable: items
+      height: 96
+      id: dedupe_code
+      position:
+        x: 1780
+        y: 300
+      positionAbsolute:
+        x: 1780
+        y: 300
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        desc: 'Qualify each unique company: profile + buying-signal search, then score.'
+        error_handle_mode: terminated
+        height: 320
+        is_parallel: true
+        iterator_input_type: array[string]
+        iterator_selector:
+        - dedupe_code
+        - companies
+        output_selector:
+        - qualifier_llm
+        - text
+        output_type: array[string]
+        parallel_nums: 2
+        selected: false
+        start_node_id: qual_iterstart
+        title: Qualification Loop
+        type: iteration
+        width: 1080
+      height: 320
+      id: qual_iter
+      position:
+        x: 2080
+        y: 300
+      positionAbsolute:
+        x: 2080
+        y: 300
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 1080
+      zIndex: 1
+    - data:
+        desc: ''
+        isInIteration: true
+        selected: false
+        title: ''
+        type: iteration-start
+      draggable: false
+      height: 48
+      id: qual_iterstart
+      parentId: qual_iter
+      position:
+        x: 24
+        y: 120
+      positionAbsolute:
+        x: 2104
+        y: 420
+      selectable: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom-iteration-start
+      width: 44
+      zIndex: 1002
+    - data:
+        desc: Company profile, size, what they do.
+        isInIteration: true
+        isInLoop: false
+        iteration_id: qual_iter
+        provider_id: langgenius/tavily/tavily
+        provider_name: langgenius/tavily/tavily
+        provider_type: builtin
+        selected: false
+        title: Search - Profile
+        tool_configurations:
+          include_raw_content:
+            type: constant
+            value: false
+          max_results:
+            type: constant
+            value: 4
+          search_depth:
+            type: constant
+            value: advanced
+          topic:
+            type: constant
+            value: general
+        tool_description: Web search.
+        tool_label: Tavily Search
+        tool_name: tavily_search
+        tool_node_version: '2'
+        tool_parameters:
+          query:
+            type: mixed
+            value: '{{#qual_iter.item#}} company overview size industry what they
+              do'
+        type: tool
+      height: 194
+      id: q_tv_profile
+      parentId: qual_iter
+      position:
+        x: 128
+        y: 90
+      positionAbsolute:
+        x: 2208
+        y: 390
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 1002
+    - data:
+        desc: 'Buying signals: growth, hiring, funding, initiatives.'
+        isInIteration: true
+        isInLoop: false
+        iteration_id: qual_iter
+        provider_id: langgenius/tavily/tavily
+        provider_name: langgenius/tavily/tavily
+        provider_type: builtin
+        selected: false
+        title: Search - Signals
+        tool_configurations:
+          include_raw_content:
+            type: constant
+            value: false
+          max_results:
+            type: constant
+            value: 4
+          search_depth:
+            type: constant
+            value: advanced
+          topic:
+            type: constant
+            value: news
+        tool_description: Web search.
+        tool_label: Tavily Search
+        tool_name: tavily_search
+        tool_node_version: '2'
+        tool_parameters:
+          query:
+            type: mixed
+            value: '{{#qual_iter.item#}} funding hiring growth expansion recent initiatives
+              news'
+        type: tool
+      height: 210
+      id: q_tv_signals
+      parentId: qual_iter
+      position:
+        x: 380
+        y: 90
+      positionAbsolute:
+        x: 2460
+        y: 390
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 1002
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Score fit and buying intent, emit structured JSON.
+        isInIteration: true
+        isInLoop: false
+        iteration_id: qual_iter
+        memory:
+          enabled: false
+          window:
+            enabled: false
+            size: 50
+        model:
+          completion_params: {}
+          mode: chat
+          name: gpt-5.5
+          provider: langgenius/openai/openai
+        prompt_template:
+        - role: system
+          text: 'You are an SDR qualifying a potential client for the seller. Using
+            ONLY the supplied profile and signals search results, assess fit. Score
+            1-5: fit (how well they match the ideal customer and could use the offering),
+            intent (buying signals like growth/hiring/funding/relevant initiatives).
+            Respond with ONLY a JSON object, no markdown: {"company":"...","summary":"1-2
+            sentences","fit":N,"intent":N, "why_now":"trigger or signal if any","angle":"the
+            single best reason this seller is relevant to them","sources":["url"]}.
+            If evidence is thin, score conservatively.'
+        - role: user
+          text: 'Seller: {{#start_node.my_company#}} — offers: {{#start_node.what_we_offer#}}
+
+            Prospect company: {{#qual_iter.item#}}
+
+            PROFILE: {{#q_tv_profile.text#}}
+
+            SIGNALS: {{#q_tv_signals.text#}}'
+        retry_config:
+          enabled: false
+          exponential_backoff:
+            enabled: false
+            max_interval: 10000
+            multiplier: 2
+          max_retries: 1
+          retry_interval: 1000
+        selected: false
+        structured_output:
+          enabled: false
+        title: Qualifier
+        type: llm
+        vision:
+          configs:
+            variable_selector: []
+          enabled: false
+      height: 132
+      id: qualifier_llm
+      parentId: qual_iter
+      position:
+        x: 632
+        y: 90
+      positionAbsolute:
+        x: 2712
+        y: 390
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 1002
+    - data:
+        code: "import json\n\ndef main(items: list) -> dict:\n    rows = []\n    for\
+          \ it in (items or []):\n        t = (it or '').strip()\n        if t.startswith('```'):\n\
+          \            t = t.strip('`')\n            if t.startswith('json'):\n  \
+          \              t = t[4:]\n        try:\n            o = json.loads(t)\n\
+          \        except Exception:\n            continue\n        if not isinstance(o,\
+          \ dict):\n            continue\n        for k in ('fit', 'intent'):\n  \
+          \          try: o[k] = int(o.get(k, 0))\n            except Exception: o[k]\
+          \ = 0\n        o['lead_score'] = o['fit'] * 2 + o['intent']\n        if\
+          \ o['lead_score'] >= 12:\n            o['tier'] = 'A'\n        elif o['lead_score']\
+          \ >= 8:\n            o['tier'] = 'B'\n        else:\n            o['tier']\
+          \ = 'C'\n        rows.append(o)\n    rows.sort(key=lambda r: r.get('lead_score',\
+          \ 0), reverse=True)\n    counts = {'A': 0, 'B': 0, 'C': 0}\n    for r in\
+          \ rows:\n        counts[r['tier']] = counts.get(r['tier'], 0) + 1\n    return\
+          \ {\"leads\": json.dumps(rows, ensure_ascii=False, indent=2), \"summary\"\
+          : json.dumps(counts), \"total\": len(rows)}\n"
+        code_language: python3
+        desc: Score each lead, assign tier A/B/C, rank.
+        outputs:
+          leads:
+            children: null
+            type: string
+          summary:
+            children: null
+            type: string
+          total:
+            children: null
+            type: number
+        selected: false
+        title: Tier & Rank
+        type: code
+        variables:
+        - value_selector:
+          - qual_iter
+          - output
+          variable: items
+      height: 96
+      id: tier_code
+      position:
+        x: 3240
+        y: 300
+      positionAbsolute:
+        x: 3240
+        y: 300
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Draft a tier-tailored outreach message for each lead.
+        memory:
+          enabled: false
+          window:
+            enabled: false
+            size: 50
+        model:
+          completion_params: {}
+          mode: chat
+          name: gpt-5.5
+          provider: langgenius/openai/openai
+        prompt_template:
+        - role: system
+          text: 'You write B2B outreach for {{#start_node.my_company#}} (offering:
+            {{#start_node.what_we_offer#}}). You receive a ranked JSON list of qualified
+            leads, each with a tier (A/B/C), fit/intent scores, a why_now trigger,
+            and an angle. Produce, grouped by tier: - Tier A (hot): a personalized
+            4-6 sentence email each, opening on their specific why_now trigger, leading
+            with the angle, one clear CTA for a call. - Tier B (warm): a shorter 3-4
+            sentence email each, lighter personalization. - Tier C (nurture): a 2-sentence
+            connection-request style note each. For every lead include a one-line
+            rationale (why this tier) above its draft. Keep tone professional, specific,
+            no fluff, no fake facts. End with a short summary table: Company | Tier
+            | Fit | Intent | Score. Preserve scores exactly.'
+        - role: user
+          text: 'Tier counts: {{#tier_code.summary#}}
+
+            Ranked qualified leads (JSON): {{#tier_code.leads#}}'
+        retry_config:
+          enabled: false
+          exponential_backoff:
+            enabled: false
+            max_interval: 10000
+            multiplier: 2
+          max_retries: 1
+          retry_interval: 1000
+        selected: false
+        structured_output:
+          enabled: false
+        title: Outreach Writer
+        type: llm
+        vision:
+          configs:
+            variable_selector: []
+          enabled: false
+      height: 132
+      id: outreach_llm
+      position:
+        x: 3540
+        y: 300
+      positionAbsolute:
+        x: 3540
+        y: 300
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        desc: ''
+        outputs:
+        - value_selector:
+          - outreach_llm
+          - text
+          value_type: string
+          variable: outreach_drafts
+        - value_selector:
+          - tier_code
+          - leads
+          value_type: string
+          variable: ranked_leads_json
+        - value_selector:
+          - dedupe_code
+          - found
+          value_type: number
+          variable: companies_found
+        selected: false
+        title: End
+        type: end
+      height: 140
+      id: end_node
+      position:
+        x: 3840
+        y: 300
+      positionAbsolute:
+        x: 3840
+        y: 300
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: 396.365122211663
+      y: 291.5543183144049
+      zoom: 0.424574391033498
+  rag_pipeline_variables: []

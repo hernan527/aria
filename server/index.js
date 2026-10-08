@@ -399,6 +399,152 @@ db.exec(`
     db.exec(`ALTER TABLE contacts ADD COLUMN hubspot_contact_id TEXT`)
     console.log('✓ Migrado: contacts.hubspot_contact_id')
   }
+  // users: active (permite desactivar vendedores sin borrarlos)
+  const usersCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name)
+  if (!usersCols.includes('active')) {
+    db.exec(`ALTER TABLE users ADD COLUMN active INTEGER DEFAULT 1`)
+    console.log('✓ Migrado: users.active')
+  }
+  // wa_conversations: contact_id (ancla al contacto local, fix de matching LID/teléfono real)
+  // + scored_at/score_attempts (circuit breaker del agente calificador "Lucas")
+  const waCols2 = db.prepare("PRAGMA table_info(wa_conversations)").all().map(c => c.name)
+  if (!waCols2.includes('contact_id')) {
+    db.exec(`ALTER TABLE wa_conversations ADD COLUMN contact_id TEXT`)
+    console.log('✓ Migrado: wa_conversations.contact_id')
+  }
+  if (!waCols2.includes('scored_at')) {
+    db.exec(`ALTER TABLE wa_conversations ADD COLUMN scored_at INTEGER`)
+    db.exec(`ALTER TABLE wa_conversations ADD COLUMN score_attempts INTEGER DEFAULT 0`)
+    console.log('✓ Migrado: wa_conversations.scored_at/score_attempts')
+  }
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_wa_conv_contact ON wa_conversations(workspace_id, contact_id)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_wa_conv_sweep ON wa_conversations(closed, scored_at, updated_at)`)
+  // channel_settings: toggle del agente calificador "Lucas"
+  const csCols3 = db.prepare("PRAGMA table_info(channel_settings)").all().map(c => c.name)
+  if (!csCols3.includes('ai_scoring_enabled')) {
+    db.exec(`ALTER TABLE channel_settings ADD COLUMN ai_scoring_enabled INTEGER DEFAULT 0`)
+    console.log('✓ Migrado: channel_settings.ai_scoring_enabled')
+  }
+  // lead_scores: tabla del agente calificador "Lucas"
+  db.exec(`CREATE TABLE IF NOT EXISTS lead_scores (
+    workspace_id    TEXT NOT NULL,
+    contact_id      TEXT NOT NULL,
+    temperature     TEXT NOT NULL DEFAULT 'frio',
+    score           INTEGER NOT NULL DEFAULT 0,
+    reasoning       TEXT,
+    last_request_id TEXT,
+    updated_at      INTEGER DEFAULT (strftime('%s','now')),
+    PRIMARY KEY (workspace_id, contact_id)
+  )`)
+  // dify_agents: seguimientos automáticos + derivación estructurada conectada a Lucas
+  const daCols2 = db.prepare("PRAGMA table_info(dify_agents)").all().map(c => c.name)
+  if (!daCols2.includes('followup_cadence')) {
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN followup_cadence TEXT DEFAULT 'none'`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN followup_intervals TEXT DEFAULT '[]'`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN followup_hours_start TEXT DEFAULT '08:00'`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN followup_hours_end TEXT DEFAULT '20:00'`)
+    console.log('✓ Migrado: dify_agents.followup_*')
+  }
+  if (!daCols2.includes('derivation_mode')) {
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN derivation_mode TEXT DEFAULT 'nunca'`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN derivation_score_threshold INTEGER DEFAULT 70`)
+    console.log('✓ Migrado: dify_agents.derivation_mode/derivation_score_threshold')
+  }
+  // wa_conversations: contador de seguimientos enviados
+  const waCols3 = db.prepare("PRAGMA table_info(wa_conversations)").all().map(c => c.name)
+  if (!waCols3.includes('followup_count')) {
+    db.exec(`ALTER TABLE wa_conversations ADD COLUMN followup_count INTEGER DEFAULT 0`)
+    db.exec(`ALTER TABLE wa_conversations ADD COLUMN last_followup_at INTEGER`)
+    console.log('✓ Migrado: wa_conversations.followup_count/last_followup_at')
+  }
+  // channel_instances: agente Dify asignado a este canal (routing por canal)
+  const ciCols2 = db.prepare("PRAGMA table_info(channel_instances)").all().map(c => c.name)
+  if (!ciCols2.includes('bot_id')) {
+    db.exec(`ALTER TABLE channel_instances ADD COLUMN bot_id TEXT`)
+    console.log('✓ Migrado: channel_instances.bot_id')
+  }
+  // dify_agents: Objetivo + Comportamiento
+  const daCols3 = db.prepare("PRAGMA table_info(dify_agents)").all().map(c => c.name)
+  if (!daCols3.includes('goals')) {
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN goals TEXT DEFAULT '[]'`)
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN goal_success_criteria TEXT`)
+    console.log('✓ Migrado: dify_agents.goals/goal_success_criteria')
+  }
+  if (!daCols3.includes('behavior_notes')) {
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN behavior_notes TEXT`)
+    console.log('✓ Migrado: dify_agents.behavior_notes')
+  }
+  // wa_conversations: usuario asignado al derivar a humano
+  if (!waCols3.includes('assigned_user_id')) {
+    db.exec(`ALTER TABLE wa_conversations ADD COLUMN assigned_user_id TEXT`)
+    console.log('✓ Migrado: wa_conversations.assigned_user_id')
+  }
+  // channel_settings: tool provider de Dify (agent-chat) registrado para este workspace
+  const csCols4 = db.prepare("PRAGMA table_info(channel_settings)").all().map(c => c.name)
+  if (!csCols4.includes('dify_tool_provider_id')) {
+    db.exec(`ALTER TABLE channel_settings ADD COLUMN dify_tool_provider_id TEXT`)
+    console.log('✓ Migrado: channel_settings.dify_tool_provider_id')
+  }
+
+  // ── Planes de pago (MercadoPago) ───────────────────────────────────────────
+  db.exec(`CREATE TABLE IF NOT EXISTS plans (
+    id                  TEXT PRIMARY KEY,
+    name                TEXT NOT NULL,
+    price_ars           REAL NOT NULL,
+    ai_credits_month    INTEGER NOT NULL,
+    max_whatsapp_numbers INTEGER,
+    max_users           INTEGER,
+    max_agents          INTEGER,
+    max_funnels         INTEGER,
+    support_tier        TEXT NOT NULL DEFAULT 'email',
+    mp_plan_id          TEXT
+  )`)
+  const plansCount = db.prepare('SELECT count(*) n FROM plans').get().n
+  if (plansCount === 0) {
+    const insPlan = db.prepare(`INSERT INTO plans
+      (id, name, price_ars, ai_credits_month, max_whatsapp_numbers, max_users, max_agents, max_funnels, support_tier)
+      VALUES (?,?,?,?,?,?,?,?,?)`)
+    insPlan.run('inicial',     'Inicial',     99,  2000,   1,  3,  1,    1,    'email')
+    insPlan.run('crecer',      'Crecer',      299, 45000,  3,  10, 5,    5,    'whatsapp')
+    insPlan.run('performance', 'Performance', 699, 120000, 10, 25, null, null, 'whatsapp')
+    console.log('✓ Migrado: plans (inicial/crecer/performance)')
+  }
+
+  const wsCols = db.prepare("PRAGMA table_info(workspaces)").all().map(c => c.name)
+  if (!wsCols.includes('plan_id')) {
+    db.exec(`ALTER TABLE workspaces ADD COLUMN plan_id TEXT DEFAULT 'inicial'`)
+    db.exec(`ALTER TABLE workspaces ADD COLUMN plan_status TEXT DEFAULT 'trial'`)
+    db.exec(`ALTER TABLE workspaces ADD COLUMN mp_subscription_id TEXT`)
+    db.exec(`ALTER TABLE workspaces ADD COLUMN trial_ends_at INTEGER`)
+    console.log('✓ Migrado: workspaces.plan_id/plan_status/mp_subscription_id/trial_ends_at')
+  }
+
+  db.exec(`CREATE TABLE IF NOT EXISTS usage_counters (
+    workspace_id TEXT NOT NULL,
+    year_month   TEXT NOT NULL,
+    messages     INTEGER DEFAULT 0,
+    PRIMARY KEY (workspace_id, year_month)
+  )`)
+
+  // Integraciones del agente: tools builtin de Dify activadas + tools custom (endpoints propios)
+  const daCols4 = db.prepare("PRAGMA table_info(dify_agents)").all().map(c => c.name)
+  if (!daCols4.includes('extra_builtin_tools')) {
+    db.exec(`ALTER TABLE dify_agents ADD COLUMN extra_builtin_tools TEXT DEFAULT '[]'`)
+    console.log('✓ Migrado: dify_agents.extra_builtin_tools')
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS agent_custom_tools (
+    id              TEXT PRIMARY KEY,
+    bot_id          TEXT NOT NULL,
+    workspace_id    TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    description     TEXT,
+    url             TEXT NOT NULL,
+    method          TEXT NOT NULL DEFAULT 'GET',
+    params          TEXT DEFAULT '[]',
+    dify_provider_id   TEXT,
+    dify_provider_name TEXT,
+    created_at      INTEGER DEFAULT (strftime('%s','now'))
+  )`)
 })();
 
 // ── Migración: usuarios viejos sin workspace_id ───────────────────────────────
@@ -446,26 +592,14 @@ async function callLLM({ system, messages, max_tokens = 1024, workspaceId, difyC
   if (!apiKey) throw new Error('No hay API key de LLM configurada')
 
   if (provider === 'dify') {
-    const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
+    // Streaming siempre: las apps agent-chat (con tools) rechazan 'blocking'.
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || ''
-    const r = await fetch(`${difyUrl}/v1/chat-messages`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        inputs: {},
-        query: lastUserMsg,
-        response_mode: 'blocking',
-        conversation_id: difyConversationId || '',
-        user: workspaceId || 'aria',
-      }),
-    })
-    const d = await r.json()
-    if (d.code || d.status === 400) throw new Error(d.message || JSON.stringify(d))
+    const { answer, conversationId, usage } = await callDifyChat(apiKey, { query: lastUserMsg, conversationId: difyConversationId, user: workspaceId })
     return {
-      text: d.answer?.trim() || '',
+      text: answer,
       model: 'dify',
-      usage: { input_tokens: d.metadata?.usage?.prompt_tokens || 0, output_tokens: d.metadata?.usage?.completion_tokens || 0 },
-      difyConversationId: d.conversation_id,
+      usage,
+      difyConversationId: conversationId,
     }
   }
 
@@ -635,6 +769,8 @@ app.post('/api/auth/login', async (req, res) => {
   const valid = await bcrypt.compare(password, user.password_hash)
   if (!valid) return res.status(401).json({ error: 'Credenciales incorrectas' })
 
+  if (user.active === 0) return res.status(403).json({ error: 'Tu cuenta está desactivada. Contactá al administrador.' })
+
   const workspace = db.prepare('SELECT * FROM workspaces WHERE id=?').get(user.workspace_id)
   if (!workspace) return res.status(400).json({ error: 'Workspace no encontrado. Contactá al administrador.' })
 
@@ -693,9 +829,45 @@ app.get('/api/auth/me', requireAriaAuth, (req, res) => {
 // ── Workspace info ────────────────────────────────────────────────────────────
 app.get('/api/workspace/members', requireAriaAuth, (req, res) => {
   const members = db.prepare(
-    'SELECT id, email, name, role FROM users WHERE workspace_id=? ORDER BY name'
+    'SELECT id, email, name, role, COALESCE(active,1) AS active FROM users WHERE workspace_id=? ORDER BY name'
   ).all(req.ariaUser.workspaceId)
   res.json(members)
+})
+
+app.put('/api/workspace/members/:id', requireAriaAuth, (req, res) => {
+  if (!['owner', 'admin'].includes(req.ariaUser.role)) {
+    return res.status(403).json({ error: 'Solo los administradores pueden editar miembros' })
+  }
+  const target = db.prepare('SELECT * FROM users WHERE id=? AND workspace_id=?').get(req.params.id, req.ariaUser.workspaceId)
+  if (!target) return res.status(404).json({ error: 'Miembro no encontrado' })
+  if (target.role === 'owner' && req.ariaUser.email !== target.email) {
+    return res.status(403).json({ error: 'No se puede editar al owner del workspace' })
+  }
+
+  const { name, role, active } = req.body || {}
+  const updates = []
+  const vals = []
+  if (name !== undefined)   { updates.push('name=?');   vals.push(name || null) }
+  if (role !== undefined && ['admin', 'member'].includes(role)) { updates.push('role=?'); vals.push(role) }
+  if (active !== undefined) { updates.push('active=?'); vals.push(active ? 1 : 0) }
+  if (updates.length) {
+    db.prepare(`UPDATE users SET ${updates.join(',')} WHERE id=? AND workspace_id=?`).run(...vals, req.params.id, req.ariaUser.workspaceId)
+  }
+  res.json({ ok: true })
+})
+
+app.delete('/api/workspace/members/:id', requireAriaAuth, (req, res) => {
+  if (!['owner', 'admin'].includes(req.ariaUser.role)) {
+    return res.status(403).json({ error: 'Solo los administradores pueden eliminar miembros' })
+  }
+  const target = db.prepare('SELECT * FROM users WHERE id=? AND workspace_id=?').get(req.params.id, req.ariaUser.workspaceId)
+  if (!target) return res.status(404).json({ error: 'Miembro no encontrado' })
+  if (target.role === 'owner') return res.status(403).json({ error: 'No se puede eliminar al owner del workspace' })
+  if (target.email === req.ariaUser.email) return res.status(400).json({ error: 'No podés eliminarte a vos mismo' })
+
+  db.prepare('DELETE FROM team_members WHERE user_id=?').run(req.params.id)
+  db.prepare('DELETE FROM users WHERE id=? AND workspace_id=?').run(req.params.id, req.ariaUser.workspaceId)
+  res.json({ ok: true })
 })
 
 app.get('/api/workspace', requireAriaAuth, (req, res) => {
@@ -771,6 +943,10 @@ app.put('/api/llm/config', requireAriaAuth, (req, res) => {
 app.post('/api/workspace/invite', requireAriaAuth, async (req, res) => {
   if (!['owner', 'admin'].includes(req.ariaUser.role)) {
     return res.status(403).json({ error: 'Solo los administradores pueden invitar miembros' })
+  }
+  const usage = getPlanAndUsage(req.ariaUser.workspaceId)
+  if (usage.usersLimitReached) {
+    return res.status(403).json({ error: `Llegaste al límite de usuarios de tu plan (${usage.plan.name}: ${usage.plan.max_users}) — actualizá tu plan para invitar más.` })
   }
   const { email, name, role, permissions } = req.body || {}
   const token   = randomUUID()
@@ -1180,6 +1356,10 @@ app.get('/api/funnels', requireAriaAuth, (req, res) => {
 app.post('/api/funnels', requireAriaAuth, (req, res) => {
   const { name, stages } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name requerido' })
+  const usage = getPlanAndUsage(req.ariaUser.workspaceId)
+  if (usage.funnelsLimitReached) {
+    return res.status(403).json({ error: `Llegaste al límite de embudos de tu plan (${usage.plan.name}: ${usage.plan.max_funnels}) — actualizá tu plan para crear más.` })
+  }
   const id = randomUUID()
   const stagesJson = stages ? JSON.stringify(stages) : DEFAULT_STAGES_JSON
   db.prepare('INSERT INTO funnels (id,workspace_id,name,stages) VALUES (?,?,?,?)')
@@ -1257,6 +1437,183 @@ function getChannelSettings(workspaceId) {
   }
 }
 
+// Resuelve qué agente Dify atiende un canal: el asignado directamente a la sesión
+// (routing por canal) o, si no hay, el bot por defecto del workspace (compatibilidad
+// con workspaces de un solo agente).
+function resolveActiveAgent(workspaceId, sessionName) {
+  const inst = sessionName
+    ? db.prepare('SELECT bot_id FROM channel_instances WHERE workspace_id=? AND session_name=?').get(workspaceId, sessionName)
+    : null
+  const botId = inst?.bot_id || db.prepare('SELECT default_bot_id FROM channel_settings WHERE workspace_id=?').get(workspaceId)?.default_bot_id
+  if (!botId || botId === '__dify__') return null
+  return db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, workspaceId)
+}
+
+// Elige a quién asignar una conversación derivada a humano, según derivation_users
+// del agente ('__all__' → cualquier miembro del workspace; lista → solo esos).
+function pickHandoffUser(workspaceId, derivationUsersJson) {
+  let ids = []
+  try { ids = JSON.parse(derivationUsersJson || '["__all__"]') } catch { ids = ['__all__'] }
+  const members = db.prepare('SELECT id FROM users WHERE workspace_id=? AND COALESCE(active,1)=1').all(workspaceId)
+  if (!members.length) return null
+  const pool = ids.includes('__all__') ? members.map(m => m.id) : members.map(m => m.id).filter(id => ids.includes(id))
+  if (!pool.length) return null
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+// ── Planes de pago — métricas y gating ────────────────────────────────────────
+
+function currentYearMonth() {
+  const d = new Date()
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+// Suma 1 "crédito AI" consumido este mes — se llama una vez por mensaje real que
+// efectivamente generó una respuesta de IA (no por cada webhook recibido).
+function incrementMessageUsage(workspaceId) {
+  const ym = currentYearMonth()
+  db.prepare(`
+    INSERT INTO usage_counters (workspace_id, year_month, messages) VALUES (?,?,1)
+    ON CONFLICT(workspace_id, year_month) DO UPDATE SET messages = messages + 1
+  `).run(workspaceId, ym)
+}
+
+// Resuelve el plan activo de un workspace + su uso actual contra los límites del plan.
+// Los límites NULL en la tabla plans significan "ilimitado" (plan Performance).
+function getPlanAndUsage(workspaceId) {
+  const ws = db.prepare('SELECT plan_id, plan_status FROM workspaces WHERE id=?').get(workspaceId)
+  const plan = db.prepare('SELECT * FROM plans WHERE id=?').get(ws?.plan_id || 'inicial') || db.prepare('SELECT * FROM plans WHERE id=?').get('inicial')
+  const agentsUsed   = db.prepare('SELECT count(*) n FROM dify_agents WHERE workspace_id=?').get(workspaceId).n
+  const whatsappUsed = db.prepare("SELECT count(*) n FROM channel_instances WHERE workspace_id=? AND provider IN ('waha','evolution')").get(workspaceId).n
+  const usersUsed    = db.prepare('SELECT count(*) n FROM users WHERE workspace_id=?').get(workspaceId).n
+  const funnelsUsed  = db.prepare('SELECT count(*) n FROM funnels WHERE workspace_id=?').get(workspaceId).n
+  const messagesUsed = db.prepare('SELECT messages FROM usage_counters WHERE workspace_id=? AND year_month=?').get(workspaceId, currentYearMonth())?.messages || 0
+
+  const within = (used, max) => max == null || used < max
+  return {
+    plan, planStatus: ws?.plan_status || 'trial',
+    agentsUsed, whatsappUsed, usersUsed, funnelsUsed, messagesUsed,
+    agentsLimitReached:   !within(agentsUsed,   plan.max_agents),
+    whatsappLimitReached: !within(whatsappUsed, plan.max_whatsapp_numbers),
+    usersLimitReached:    !within(usersUsed,    plan.max_users),
+    funnelsLimitReached:  !within(funnelsUsed,  plan.max_funnels),
+    messagesLimitReached: !within(messagesUsed, plan.ai_credits_month),
+  }
+}
+
+// Resuelve la respuesta de Dify para un mensaje de WhatsApp entrante, manteniendo
+// la conversación (TTL, dify_conversation_id, handoff) — usada por WAHA y EvolutionGo
+// para no duplicar esta lógica en cada webhook.
+async function resolveDifyReply({ workspaceId, sessionName, rawChatId, from, body, pushName, realPhone }) {
+  const contactId = upsertContactFromWA(workspaceId, rawChatId, pushName, realPhone)
+  const activeAgent = resolveActiveAgent(workspaceId, sessionName)
+  const CONV_TTL_SECS  = 30 * 60
+  const HUMAN_TTL_SECS = 4 * 60 * 60
+
+  // Cierre perezoso (fallback) + matching por contact_id — ya no se pierde la conversación
+  // cuando WhatsApp entrega un chatId distinto (LID vs número real) para el mismo contacto.
+  db.prepare(`
+    UPDATE wa_conversations SET closed=1
+    WHERE workspace_id=? AND session_name=? AND (contact_id=? OR wa_from=? OR wa_from=?) AND closed=0
+      AND ((bot_mode='bot' AND (strftime('%s','now') - updated_at) > ?)
+        OR (bot_mode='human' AND (strftime('%s','now') - updated_at) > ?))
+  `).run(workspaceId, sessionName, contactId, rawChatId, from, CONV_TTL_SECS, HUMAN_TTL_SECS)
+
+  let waConv = db.prepare(`
+    SELECT * FROM wa_conversations
+    WHERE workspace_id=? AND session_name=? AND (contact_id=? OR wa_from=? OR wa_from=?) AND closed=0
+    ORDER BY updated_at DESC LIMIT 1
+  `).get(workspaceId, sessionName, contactId, rawChatId, from)
+
+  if (waConv?.bot_mode === 'human') {
+    db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(waConv.request_id)
+    console.log(`👤 [Dify] Modo humano — ignorado: ${from}`)
+    return { skip: true, contactId }
+  }
+
+  // Límite de créditos AI del plan: nunca se pierde el mensaje, pero el bot deja de
+  // responder solo (pasa a modo humano) hasta el próximo mes o un upgrade de plan.
+  if (getPlanAndUsage(workspaceId).messagesLimitReached) {
+    const rid = waConv?.request_id || `dify-${randomUUID()}`
+    if (!waConv) {
+      db.prepare(`
+        INSERT INTO wa_conversations (id,workspace_id,session_name,wa_from,contact_id,request_id,closed,bot_mode,updated_at)
+        VALUES (?,?,?,?,?,?,0,'human',strftime('%s','now'))
+      `).run(randomUUID(), workspaceId, sessionName, rawChatId, contactId, rid)
+    } else {
+      db.prepare("UPDATE wa_conversations SET bot_mode='human', updated_at=strftime('%s','now') WHERE request_id=?").run(rid)
+    }
+    console.log(`💳 [Billing] Límite de créditos AI alcanzado → modo humano: ws ${workspaceId}`)
+    return { skip: true, contactId, creditsExhausted: true }
+  }
+
+  let requestId = waConv?.request_id
+  let isNewConv = false
+  if (!requestId) {
+    isNewConv = true
+    requestId = `dify-${randomUUID()}`
+    db.prepare(`
+      INSERT INTO wa_conversations (id,workspace_id,session_name,wa_from,contact_id,request_id,closed,updated_at)
+      VALUES (?,?,?,?,?,?,0,strftime('%s','now'))
+    `).run(randomUUID(), workspaceId, sessionName, rawChatId, contactId, requestId)
+    waConv = { request_id: requestId, dify_conversation_id: null, bot_mode: 'bot' }
+    console.log(`➕ [Dify] Nueva conv: ${requestId}`)
+  } else {
+    db.prepare(`UPDATE wa_conversations SET updated_at=strftime('%s','now'), contact_id=COALESCE(contact_id,?) WHERE request_id=?`)
+      .run(contactId, requestId)
+  }
+
+  // Memoria entre sesiones: si es conversación nueva y el contacto ya tiene una nota
+  // (dejada por el agente calificador "Lucas" en una sesión anterior), se la pasamos
+  // como contexto interno — el TTL de 30 min sigue limpiando el historial de Dify a propósito.
+  let effectiveBody = body
+  if (isNewConv && contactId) {
+    const c = db.prepare('SELECT note FROM contacts WHERE id=?').get(contactId)
+    if (c?.note) {
+      effectiveBody = `Contexto interno del CRM sobre este contacto (no lo menciones salvo que ayude a responder): ${c.note}\n---\nMensaje del contacto: ${body}`
+    }
+  }
+  // Membrete [ref:...] — permite que un agente agent-chat con la tool saveLeadData
+  // sepa a qué contacto local de ARIA corresponde esta conversación, copiándolo tal
+  // cual al llamar la tool (ver ensureAriaToolProvider/buildAriaSaveLeadTool).
+  if (contactId) effectiveBody = `[ref:${contactId}]\n${effectiveBody}`
+
+  const difyConvId = waConv.dify_conversation_id || extDifyConvId.get(requestId)
+  let reply, difyConversationId
+  if (activeAgent?.dify_api_key) {
+    // Routing por canal: este canal tiene un agente Dify propio asignado — pegarle
+    // directo con su API key, sin pasar por la config global de channel_settings.
+    // Streaming siempre: las apps agent-chat (con tools) rechazan 'blocking'.
+    const r = await callDifyChat(activeAgent.dify_api_key, { query: effectiveBody, conversationId: difyConvId, user: workspaceId })
+    reply = r.answer
+    difyConversationId = r.conversationId
+  } else {
+    ;({ text: reply, difyConversationId } = await callLLM({
+      messages: [{ role: 'user', content: effectiveBody }],
+      workspaceId, difyConversationId: difyConvId,
+    }))
+  }
+
+  if (difyConversationId) {
+    extDifyConvId.set(requestId, difyConversationId)
+    db.prepare('UPDATE wa_conversations SET dify_conversation_id=? WHERE request_id=?').run(difyConversationId, requestId)
+  }
+
+  let finalReply = reply || '', handoff = false
+  if (finalReply.includes('[HANDOFF]')) {
+    finalReply = finalReply.replace(/\[HANDOFF\]/g, '').trim() || 'Un momento, te conecto con un asesor.'
+    const assignedUser = pickHandoffUser(workspaceId, activeAgent?.derivation_users)
+    db.prepare("UPDATE wa_conversations SET bot_mode='human', assigned_user_id=?, updated_at=strftime('%s','now') WHERE request_id=?").run(assignedUser, requestId)
+    extDifyConvId.delete(requestId)
+    handoff = true
+    console.log(`👤 [Dify] HANDOFF detectado → modo humano`)
+  }
+
+  if (finalReply) incrementMessageUsage(workspaceId)
+
+  return { skip: false, requestId, contactId, reply: finalReply, handoff }
+}
+
 // ── Canales — configuración de providers ──────────────────────────────────────
 app.get('/api/channels/settings', requireAriaAuth, (req, res) => {
   const s = getChannelSettings(req.ariaUser.workspaceId)
@@ -1305,11 +1662,65 @@ app.put('/api/channels/settings/bot', requireAriaAuth, (req, res) => {
     }
   }
 
+  // Al desactivar (sin bot seleccionado), limpiar también las credenciales Dify
+  // "pegadas" en llm_provider/llm_api_key — si no, el webhook de WAHA sigue
+  // respondiendo vía el path directo a Dify aunque no haya bot activo.
   db.prepare(`
-    INSERT INTO channel_settings (workspace_id, default_bot_id, updated_at)
-    VALUES (?, ?, strftime('%s','now'))
-    ON CONFLICT(workspace_id) DO UPDATE SET default_bot_id=excluded.default_bot_id, updated_at=excluded.updated_at
+    INSERT INTO channel_settings (workspace_id, default_bot_id, llm_provider, llm_api_key, llm_model, updated_at)
+    VALUES (?, ?, NULL, NULL, NULL, strftime('%s','now'))
+    ON CONFLICT(workspace_id) DO UPDATE SET
+      default_bot_id=excluded.default_bot_id,
+      llm_provider=CASE WHEN llm_provider='dify' THEN NULL ELSE llm_provider END,
+      llm_api_key=CASE WHEN llm_provider='dify' THEN NULL ELSE llm_api_key END,
+      llm_model=CASE WHEN llm_provider='dify' THEN NULL ELSE llm_model END,
+      updated_at=excluded.updated_at
   `).run(workspaceId, default_bot_id || null)
+  res.json({ ok: true })
+})
+
+// ── Lucas — agente calificador (toggle + lecturas) ────────────────────────────
+app.get('/api/ai-scoring/settings', requireAriaAuth, (req, res) => {
+  const s = db.prepare('SELECT ai_scoring_enabled FROM channel_settings WHERE workspace_id=?').get(req.ariaUser.workspaceId)
+  res.json({ enabled: !!(s?.ai_scoring_enabled) })
+})
+
+app.put('/api/ai-scoring/settings', requireAriaAuth, (req, res) => {
+  const { enabled } = req.body || {}
+  db.prepare(`
+    INSERT INTO channel_settings (workspace_id, ai_scoring_enabled, updated_at) VALUES (?,?,strftime('%s','now'))
+    ON CONFLICT(workspace_id) DO UPDATE SET ai_scoring_enabled=excluded.ai_scoring_enabled, updated_at=excluded.updated_at
+  `).run(req.ariaUser.workspaceId, enabled ? 1 : 0)
+  res.json({ ok: true })
+})
+
+app.get('/api/ai-scoring/summary', requireAriaAuth, (req, res) => {
+  const rows = db.prepare('SELECT temperature, count(*) n FROM lead_scores WHERE workspace_id=? GROUP BY temperature')
+    .all(req.ariaUser.workspaceId)
+  const out = { frio: 0, tibio: 0, caliente: 0 }
+  rows.forEach(r => { out[r.temperature] = r.n })
+  res.json(out)
+})
+
+app.get('/api/ai-scoring/scores', requireAriaAuth, (req, res) => {
+  const rows = db.prepare('SELECT contact_id, temperature, score FROM lead_scores WHERE workspace_id=?').all(req.ariaUser.workspaceId)
+  const map = {}
+  rows.forEach(r => { map[r.contact_id] = { temperature: r.temperature, score: r.score } })
+  res.json(map)
+})
+
+app.get('/api/ai-scoring/top', requireAriaAuth, (req, res) => {
+  const limit = Number(req.query.limit) || 10
+  const rows = db.prepare(`
+    SELECT ls.contact_id, ls.temperature, ls.score, ls.reasoning, ls.updated_at, c.name, c.phone
+    FROM lead_scores ls JOIN contacts c ON c.id = ls.contact_id
+    WHERE ls.workspace_id=? ORDER BY ls.score DESC LIMIT ?
+  `).all(req.ariaUser.workspaceId, limit)
+  res.json(rows)
+})
+
+// Operación/debug: disparar el sweep de Lucas manualmente (sin esperar al cron de 5 min)
+app.post('/api/ai-scoring/run-now', requireAriaAuth, async (req, res) => {
+  sweepAndScoreConversations().catch(e => console.error('⚠ [Lucas] run-now error:', e.message))
   res.json({ ok: true })
 })
 
@@ -1392,6 +1803,10 @@ app.get('/api/channels/instances', requireAriaAuth, async (req, res) => {
 app.post('/api/channels/instances', requireAriaAuth, async (req, res) => {
   const { provider = 'waha', instance_name } = req.body || {}
   if (!instance_name) return res.status(400).json({ error: 'instance_name requerido' })
+  const usage = getPlanAndUsage(req.ariaUser.workspaceId)
+  if (usage.whatsappLimitReached) {
+    return res.status(403).json({ error: `Llegaste al límite de números de WhatsApp de tu plan (${usage.plan.name}: ${usage.plan.max_whatsapp_numbers}) — actualizá tu plan para conectar más.` })
+  }
   const settings = getChannelSettings(req.ariaUser.workspaceId)
   const wsId = req.ariaUser.workspaceId
   const id   = randomUUID()
@@ -1583,6 +1998,16 @@ app.post('/api/channels/instances/:id/restart', requireAriaAuth, async (req, res
   }
 })
 
+// Asignar un agente Dify a un canal específico (routing por canal, en vez del bot global único)
+app.put('/api/channels/instances/:id/bot', requireAriaAuth, (req, res) => {
+  const { bot_id } = req.body || {}
+  const inst = db.prepare('SELECT id FROM channel_instances WHERE id=? AND workspace_id=?')
+    .get(req.params.id, req.ariaUser.workspaceId)
+  if (!inst) return res.status(404).json({ error: 'Instancia no encontrada' })
+  db.prepare('UPDATE channel_instances SET bot_id=? WHERE id=?').run(bot_id || null, req.params.id)
+  res.json({ ok: true })
+})
+
 app.delete('/api/channels/instances/:id', requireAriaAuth, async (req, res) => {
   const inst = db.prepare('SELECT * FROM channel_instances WHERE id=? AND workspace_id=?')
     .get(req.params.id, req.ariaUser.workspaceId)
@@ -1711,68 +2136,24 @@ app.post('/webhook/waha', async (req, res) => {
   upsertContactFromWA(inst.workspace_id, rawChatId, pushName, realPhone)
 
   // ── Path directo: WAHA → Dify (sin Tiledesk) ────────────────────────────────
+  // Entra si este canal tiene un agente propio asignado (routing por canal) o si
+  // el workspace tiene Dify configurado como proveedor global (compatibilidad).
   const llmCfg = db.prepare('SELECT llm_provider, llm_api_key FROM channel_settings WHERE workspace_id=?').get(inst.workspace_id)
-  if (llmCfg?.llm_provider === 'dify' && llmCfg?.llm_api_key) {
+  const channelAgent = resolveActiveAgent(inst.workspace_id, sessionName)
+  if (channelAgent?.dify_api_key || (llmCfg?.llm_provider === 'dify' && llmCfg?.llm_api_key)) {
     try {
-      const CONV_TTL_SECS  = 30 * 60
-      const HUMAN_TTL_SECS = 4 * 60 * 60
-      db.prepare(
-        "UPDATE wa_conversations SET closed=1 WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 AND ((bot_mode='bot' AND (strftime('%s','now') - updated_at) > ?) OR (bot_mode='human' AND (strftime('%s','now') - updated_at) > ?))"
-      ).run(inst.workspace_id, sessionName, rawChatId, from, CONV_TTL_SECS, HUMAN_TTL_SECS)
-
-      let waConv = db.prepare(
-        'SELECT * FROM wa_conversations WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 ORDER BY updated_at DESC LIMIT 1'
-      ).get(inst.workspace_id, sessionName, rawChatId, from)
-
-      if (waConv?.bot_mode === 'human') {
-        db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(waConv.request_id)
-        console.log(`👤 [Dify] Modo humano — ignorado: ${from}`)
-        return
-      }
-
-      let requestId = waConv?.request_id
-      if (!requestId) {
-        requestId = `dify-${randomUUID()}`
-        db.prepare(
-          "INSERT INTO wa_conversations (id,workspace_id,session_name,wa_from,request_id,closed,updated_at) VALUES (?,?,?,?,?,0,strftime('%s','now'))"
-        ).run(randomUUID(), inst.workspace_id, sessionName, rawChatId, requestId)
-        waConv = { request_id: requestId, dify_conversation_id: null, bot_mode: 'bot' }
-        console.log(`➕ [Dify] Nueva conv: ${requestId}`)
-      } else {
-        db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
-      }
-
-      const difyConvId = waConv.dify_conversation_id || extDifyConvId.get(requestId)
-      const { text: reply, difyConversationId } = await callLLM({
-        messages: [{ role: 'user', content: body }],
-        workspaceId: inst.workspace_id,
-        difyConversationId: difyConvId,
-      })
-
-      if (difyConversationId) {
-        extDifyConvId.set(requestId, difyConversationId)
-        db.prepare('UPDATE wa_conversations SET dify_conversation_id=? WHERE request_id=?').run(difyConversationId, requestId)
-      }
-
-      let finalReply = reply || ''
-      if (finalReply.includes('[HANDOFF]')) {
-        finalReply = finalReply.replace(/\[HANDOFF\]/g, '').trim() || 'Un momento, te conecto con un asesor.'
-        db.prepare("UPDATE wa_conversations SET bot_mode='human', updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
-        extDifyConvId.delete(requestId)
-        console.log(`👤 [Dify] HANDOFF detectado → modo humano`)
-      }
-
-      if (!finalReply) return
+      const result = await resolveDifyReply({ workspaceId: inst.workspace_id, sessionName, rawChatId, from, body, pushName, realPhone })
+      if (result.skip || !result.reply) return
 
       const waSettings = getChannelSettings(inst.workspace_id)
       const chatId = rawChatId.includes('@') ? rawChatId : `${rawChatId}@c.us`
       await fetch(`${waSettings.waha_url}/api/sendText`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Api-Key': waSettings.waha_key || '' },
-        body: JSON.stringify({ chatId, text: finalReply, session: sessionName }),
+        body: JSON.stringify({ chatId, text: result.reply, session: sessionName }),
       })
-      console.log(`✓ [Dify direct] → ${chatId} | ${finalReply.slice(0, 50)}`)
-      sseEmit(inst.workspace_id, { event: 'new-message', requestId, from, name, text: body })
+      console.log(`✓ [Dify direct] → ${chatId} | ${result.reply.slice(0, 50)}`)
+      sseEmit(inst.workspace_id, { event: 'new-message', requestId: result.requestId, from, name, text: body })
     } catch(e) {
       console.error('⚠ Dify direct error:', e.message)
     }
@@ -2040,56 +2421,14 @@ app.post('/webhook/evogo', async (req, res) => {
 
   console.log(`📨 evogo: ${from} → ${body.slice(0, 50)}`)
 
-  // Auto-crear/actualizar contacto (evogo no tiene SenderAlt)
-  upsertContactFromWA(inst.workspace_id, rawChatId, pushName, null)
-
   try {
-    const CONV_TTL_SECS = 30 * 60
-    db.prepare(
-      "UPDATE wa_conversations SET closed=1 WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 AND bot_mode='bot' AND (strftime('%s','now') - updated_at) > ?"
-    ).run(inst.workspace_id, instanceName, rawChatId, from, CONV_TTL_SECS)
-
-    let waConv = db.prepare(
-      'SELECT * FROM wa_conversations WHERE workspace_id=? AND session_name=? AND (wa_from=? OR wa_from=?) AND closed=0 ORDER BY updated_at DESC LIMIT 1'
-    ).get(inst.workspace_id, instanceName, rawChatId, from)
-
-    if (waConv?.bot_mode === 'human') {
-      db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(waConv.request_id)
+    // resolveDifyReply llama a upsertContactFromWA internamente (evogo no tiene SenderAlt → realPhone=null)
+    const result = await resolveDifyReply({ workspaceId: inst.workspace_id, sessionName: instanceName, rawChatId, from, body, pushName, realPhone: null })
+    if (result.skip) {
       sseEmit(inst.workspace_id, { event: 'new-message', from, name, text: body })
       return
     }
-
-    let requestId = waConv?.request_id
-    if (!requestId) {
-      requestId = `evogo-${randomUUID()}`
-      db.prepare(
-        "INSERT INTO wa_conversations (id,workspace_id,session_name,wa_from,request_id,closed,updated_at) VALUES (?,?,?,?,?,0,strftime('%s','now'))"
-      ).run(randomUUID(), inst.workspace_id, instanceName, rawChatId, requestId)
-      waConv = { request_id: requestId, dify_conversation_id: null, bot_mode: 'bot' }
-    } else {
-      db.prepare("UPDATE wa_conversations SET updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
-    }
-
-    const difyConvId = waConv?.dify_conversation_id || extDifyConvId.get(requestId)
-    const { text: reply, difyConversationId } = await callLLM({
-      messages: [{ role: 'user', content: body }],
-      workspaceId: inst.workspace_id,
-      difyConversationId: difyConvId,
-    })
-
-    if (difyConversationId) {
-      extDifyConvId.set(requestId, difyConversationId)
-      db.prepare('UPDATE wa_conversations SET dify_conversation_id=? WHERE request_id=?').run(difyConversationId, requestId)
-    }
-
-    let finalReply = reply || ''
-    if (finalReply.includes('[HANDOFF]')) {
-      finalReply = finalReply.replace(/\[HANDOFF\]/g, '').trim() || 'Un momento, te conecto con un asesor.'
-      db.prepare("UPDATE wa_conversations SET bot_mode='human', updated_at=strftime('%s','now') WHERE request_id=?").run(requestId)
-      extDifyConvId.delete(requestId)
-    }
-
-    if (!finalReply) return
+    if (!result.reply) return
 
     const settings = getChannelSettings(inst.workspace_id)
     const evoUrl = settings.evo_url || process.env.EVO_URL || ''
@@ -2097,12 +2436,139 @@ app.post('/webhook/evogo', async (req, res) => {
     await fetch(`${evoUrl}/send/text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'apikey': inst.instance_token },
-      body: JSON.stringify({ number, text: finalReply }),
+      body: JSON.stringify({ number, text: result.reply }),
     })
-    console.log(`✓ evogo → ${from}: ${finalReply.slice(0, 50)}`)
-    sseEmit(inst.workspace_id, { event: 'new-message', requestId, from, name, text: body })
+    console.log(`✓ evogo → ${from}: ${result.reply.slice(0, 50)}`)
+    sseEmit(inst.workspace_id, { event: 'new-message', requestId: result.requestId, from, name, text: body })
   } catch (e) {
     console.error('⚠ evogo webhook error:', e.message)
+  }
+})
+
+// ── Tool de Dify (agent-chat): guarda en vivo datos de contacto detectados en la charla ──
+// Llamada por el propio agente Dify vía tool-calling, no por un usuario de ARIA — sin auth de
+// sesión, scoped por workspaceId en la URL (fijo en el tool provider, no lo decide el LLM).
+app.post('/api/tools/:workspaceId/save-lead-data', (req, res) => {
+  const { workspaceId } = req.params
+  const { ref, email, company, phone, note } = req.body || {}
+  if (!ref) return res.json({ result: 'Falta el parámetro ref, no se guardó nada.' })
+
+  const contact = db.prepare('SELECT * FROM contacts WHERE id=? AND workspace_id=?').get(ref, workspaceId)
+  if (!contact) return res.json({ result: 'Contacto no encontrado para ese ref.' })
+
+  const sets = [], vals = []
+  if (email && !contact.email)     { sets.push('email=?');   vals.push(email) }
+  if (company && !contact.company) { sets.push('company=?'); vals.push(company) }
+  if (phone && !contact.phone)     { sets.push('phone=?');   vals.push(phone) }
+  if (sets.length) {
+    db.prepare(`UPDATE contacts SET ${sets.join(',')}, updated_at=strftime('%s','now') WHERE id=?`).run(...vals, ref)
+  }
+  if (note) {
+    const stamp = new Date().toISOString().slice(0, 10)
+    const newNote = contact.note ? `${contact.note}\n---\n[${stamp}] ${note}` : `[${stamp}] ${note}`
+    db.prepare("UPDATE contacts SET note=?, updated_at=strftime('%s','now') WHERE id=?").run(newNote, ref)
+  }
+  console.log(`🔧 [agent-tool] saveLeadData → contact ${ref}: ${sets.join(',') || '(solo nota)'}`)
+  res.json({ result: 'Datos guardados correctamente.' })
+})
+
+// ── Admin de planes — solo el/los admin de la plataforma, no cualquier owner ──
+// (editar precios/límites afecta a TODOS los workspaces, no solo al propio)
+function requirePlatformAdmin(req, res, next) {
+  const allowed = (process.env.ADMIN_EMAILS || 'hernan527@gmail.com').split(',').map(e => e.trim().toLowerCase())
+  if (!allowed.includes((req.ariaUser.email || '').toLowerCase())) {
+    return res.status(403).json({ error: 'No autorizado' })
+  }
+  next()
+}
+
+app.get('/api/admin/plans', requireAriaAuth, requirePlatformAdmin, (req, res) => {
+  res.json(db.prepare('SELECT * FROM plans ORDER BY price_ars').all())
+})
+
+app.put('/api/admin/plans/:id', requireAriaAuth, requirePlatformAdmin, (req, res) => {
+  const { name, price_ars, ai_credits_month, max_whatsapp_numbers, max_users, max_agents, max_funnels, support_tier, mp_plan_id } = req.body || {}
+  const plan = db.prepare('SELECT * FROM plans WHERE id=?').get(req.params.id)
+  if (!plan) return res.status(404).json({ error: 'Plan no encontrado' })
+  db.prepare(`UPDATE plans SET name=?, price_ars=?, ai_credits_month=?, max_whatsapp_numbers=?, max_users=?, max_agents=?, max_funnels=?, support_tier=?, mp_plan_id=? WHERE id=?`)
+    .run(name ?? plan.name, price_ars ?? plan.price_ars, ai_credits_month ?? plan.ai_credits_month,
+      max_whatsapp_numbers ?? plan.max_whatsapp_numbers, max_users ?? plan.max_users,
+      max_agents ?? plan.max_agents, max_funnels ?? plan.max_funnels,
+      support_tier ?? plan.support_tier, mp_plan_id ?? plan.mp_plan_id, req.params.id)
+  res.json(db.prepare('SELECT * FROM plans WHERE id=?').get(req.params.id))
+})
+
+// ── Planes de pago (MercadoPago) ───────────────────────────────────────────────
+
+app.get('/api/billing/status', requireAriaAuth, (req, res) => {
+  const usage = getPlanAndUsage(req.ariaUser.workspaceId)
+  const allPlans = db.prepare('SELECT id, name, price_ars, ai_credits_month, max_whatsapp_numbers, max_users, max_agents, max_funnels, support_tier FROM plans ORDER BY price_ars').all()
+  res.json({ ...usage, allPlans })
+})
+
+app.post('/api/billing/checkout', requireAriaAuth, async (req, res) => {
+  if (req.ariaUser.role !== 'owner') return res.status(403).json({ error: 'Solo el owner puede cambiar el plan' })
+  const { plan_id } = req.body || {}
+  const plan = db.prepare('SELECT * FROM plans WHERE id=?').get(plan_id)
+  if (!plan) return res.status(404).json({ error: 'Plan no encontrado' })
+  const mpToken = process.env.MP_ACCESS_TOKEN
+  if (!mpToken) return res.status(500).json({ error: 'MercadoPago no está configurado (falta MP_ACCESS_TOKEN)' })
+
+  try {
+    const publicUrl = process.env.ARIA_PUBLIC_URL || 'https://aria.saludok.com.ar'
+    const user = db.prepare('SELECT email FROM users WHERE workspace_id=? AND role=\'owner\' LIMIT 1').get(req.ariaUser.workspaceId)
+    const r = await fetch('https://api.mercadopago.com/preapproval', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${mpToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        reason: `ARIA — Plan ${plan.name}`,
+        auto_recurring: { frequency: 1, frequency_type: 'months', transaction_amount: plan.price_ars, currency_id: 'ARS' },
+        back_url: `${publicUrl}/settings?tab=billing`,
+        payer_email: user?.email,
+        // workspaceId:planId — recuperamos ambos en el webhook con un solo campo
+        external_reference: `${req.ariaUser.workspaceId}:${plan.id}`,
+        status: 'pending',
+      }),
+    })
+    const d = await r.json()
+    if (!r.ok) throw new Error(d.message || JSON.stringify(d).slice(0, 200))
+
+    db.prepare('UPDATE workspaces SET mp_subscription_id=? WHERE id=?').run(d.id, req.ariaUser.workspaceId)
+    res.json({ init_point: d.init_point })
+  } catch (e) {
+    console.error('billing/checkout error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.post('/webhook/mercadopago', async (req, res) => {
+  res.json({ ok: true })  // responder rápido siempre
+  try {
+    const type = req.query.type || req.query.topic || req.body?.type
+    const id   = req.query.id || req.body?.data?.id
+    if (type !== 'preapproval' || !id) return
+
+    const mpToken = process.env.MP_ACCESS_TOKEN
+    if (!mpToken) return console.warn('⚠ Webhook MercadoPago recibido pero MP_ACCESS_TOKEN no está configurado')
+
+    // Nunca confiar en el payload del webhook solo — confirmar el estado real contra la API.
+    const r = await fetch(`https://api.mercadopago.com/preapproval/${id}`, {
+      headers: { Authorization: `Bearer ${mpToken}` },
+    })
+    const d = await r.json()
+    if (!r.ok) return console.error('⚠ Webhook MercadoPago: error consultando preapproval', d)
+
+    const [workspaceId, planId] = (d.external_reference || '').split(':')
+    if (!workspaceId) return console.warn('⚠ Webhook MercadoPago: preapproval sin external_reference válido', id)
+
+    const statusMap = { authorized: 'active', paused: 'past_due', cancelled: 'cancelled', pending: 'pending' }
+    const planStatus = statusMap[d.status] || 'pending'
+
+    db.prepare('UPDATE workspaces SET plan_id=COALESCE(?,plan_id), plan_status=?, mp_subscription_id=? WHERE id=?')
+      .run(planStatus === 'active' ? planId : null, planStatus, id, workspaceId)
+    console.log(`💳 [MercadoPago] workspace ${workspaceId} → plan ${planId || '(sin cambio)'} / ${planStatus}`)
+  } catch (e) {
+    console.error('⚠ Webhook MercadoPago error:', e.message)
   }
 })
 
@@ -2245,6 +2711,13 @@ app.get('/api/waha/chats', requireAriaAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
+// Transcript crudo de WAHA para un chat — usado por el inbox y por el agente calificador "Lucas"
+async function fetchWahaMessages(settings, sessionName, chatId, limit = 50) {
+  const r = await wahaReq(settings, `/api/${sessionName}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&downloadMedia=false`)
+  const data = await r.json().catch(() => [])
+  return Array.isArray(data) ? data : []
+}
+
 app.get('/api/waha/chats/:chatId/messages', requireAriaAuth, async (req, res) => {
   const sessionName = req.query.session
   const s = getChannelSettings(req.ariaUser.workspaceId)
@@ -2253,10 +2726,8 @@ app.get('/api/waha/chats/:chatId/messages', requireAriaAuth, async (req, res) =>
     : getPrimaryWahaSession(req.ariaUser.workspaceId)
   if (!inst) return res.json([])
   try {
-    const limit = req.query.limit || 50
-    const r = await wahaReq(s, `/api/${inst.session_name}/chats/${encodeURIComponent(req.params.chatId)}/messages?limit=${limit}&downloadMedia=false`)
-    const data = await r.json().catch(() => [])
-    res.json(Array.isArray(data) ? data : [])
+    const messages = await fetchWahaMessages(s, inst.session_name, req.params.chatId, req.query.limit || 50)
+    res.json(messages)
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
@@ -2438,6 +2909,180 @@ setInterval(async () => {
   }
 }, 30000)
 
+// Cron: Lucas — cierre activo de conversaciones vencidas + calificación silenciosa.
+// El cierre por TTL en los webhooks es perezoso (solo ocurre si el contacto vuelve a
+// escribir); este sweep lo hace de forma activa para que una conversación abandonada
+// también se analice.
+async function sweepAndScoreConversations() {
+  const CONV_TTL_SECS = 30 * 60, HUMAN_TTL_SECS = 4 * 60 * 60
+
+  db.prepare(`
+    UPDATE wa_conversations SET closed=1
+    WHERE closed=0 AND (
+      (bot_mode='bot'   AND (strftime('%s','now')-updated_at) > ?) OR
+      (bot_mode='human' AND (strftime('%s','now')-updated_at) > ?)
+    )
+  `).run(CONV_TTL_SECS, HUMAN_TTL_SECS)
+
+  // V1: solo conversaciones de WAHA (único canal con endpoint de transcript hoy).
+  const candidates = db.prepare(`
+    SELECT wc.* FROM wa_conversations wc
+    JOIN channel_settings cs ON cs.workspace_id=wc.workspace_id AND cs.ai_scoring_enabled=1
+    JOIN channel_instances ci ON ci.workspace_id=wc.workspace_id AND ci.session_name=wc.session_name AND ci.provider='waha'
+    WHERE wc.closed=1 AND wc.scored_at IS NULL AND wc.score_attempts < 3
+    ORDER BY wc.updated_at ASC LIMIT 20
+  `).all()
+
+  for (const conv of candidates) {
+    try {
+      let contactId = conv.contact_id
+      if (!contactId) {
+        const guess = db.prepare('SELECT id FROM contacts WHERE workspace_id=? AND phone=?')
+          .get(conv.workspace_id, conv.wa_from.replace(/@.*/, ''))
+        contactId = guess?.id
+      }
+      if (!contactId) {
+        db.prepare("UPDATE wa_conversations SET scored_at=strftime('%s','now') WHERE id=?").run(conv.id)
+        continue
+      }
+
+      const settings = getChannelSettings(conv.workspace_id)
+      const msgs = await fetchWahaMessages(settings, conv.session_name, conv.wa_from, 60)
+
+      if (msgs.length < 2) {
+        // Conversación demasiado corta ("Hola" sin respuesta): heurística barata, sin gastar LLM.
+        executeQualifierTool('set_lead_score', { temperature: 'frio', score: 10, reasoning: 'Conversación muy corta.' }, { workspaceId: conv.workspace_id, contactId })
+        db.prepare("UPDATE wa_conversations SET scored_at=strftime('%s','now'), contact_id=? WHERE id=?").run(contactId, conv.id)
+        continue
+      }
+
+      const transcriptText = msgs.slice(-60)
+        .map(m => `${m.fromMe ? 'Bot' : 'Lead'}: ${m.body || m.caption || ''}`)
+        .join('\n').slice(0, 6000)
+
+      await runQualifierAgent({ workspaceId: conv.workspace_id, contactId, transcriptText })
+      db.prepare("UPDATE wa_conversations SET scored_at=strftime('%s','now'), contact_id=? WHERE id=?").run(contactId, conv.id)
+
+      const score = db.prepare('SELECT temperature, score, reasoning FROM lead_scores WHERE workspace_id=? AND contact_id=?').get(conv.workspace_id, contactId)
+      if (score) sseEmit(conv.workspace_id, { event: 'lead-score-updated', contactId, ...score })
+      console.log(`🧠 [Lucas] ${conv.id} → ${score?.temperature}/${score?.score}`)
+
+      // Derivación automática: si el agente activo del workspace está configurado como
+      // "objetivo_cumplido" y el score de Lucas supera el umbral, deriva a humano sin
+      // esperar a que el bot conversacional decida nada — Lucas empuja la derivación.
+      if (score?.score != null) {
+        const agentCfg = resolveActiveAgent(conv.workspace_id, conv.session_name)
+        if (agentCfg?.derivation_mode === 'objetivo_cumplido' && score.score >= (agentCfg.derivation_score_threshold ?? 70)) {
+          const assignedUser = pickHandoffUser(conv.workspace_id, agentCfg.derivation_users)
+          db.prepare("UPDATE wa_conversations SET bot_mode='human', assigned_user_id=? WHERE id=?").run(assignedUser, conv.id)
+          const contact = db.prepare('SELECT name FROM contacts WHERE id=?').get(contactId)
+          db.prepare(`
+            INSERT INTO tasks (id, workspace_id, title, description, lead_id, lead_name, assignee_id, priority, status)
+            VALUES (?,?,?,?,?,?,?,'high','pending')
+          `).run(randomUUID(), conv.workspace_id, `Lead caliente (score ${score.score}) — tomalo`,
+            `Lucas detectó intención de compra alta. ${score.reasoning || ''}`.trim(), contactId, contact?.name || null, assignedUser)
+          console.log(`🔥 [Lucas] Derivación automática por score alto: ${conv.id} (${score.score}) → ${assignedUser || 'sin asignar'}`)
+        }
+      }
+    } catch (e) {
+      console.error('⚠ [Lucas] Error calificando conversación:', conv.id, e.message)
+      db.prepare('UPDATE wa_conversations SET score_attempts=score_attempts+1 WHERE id=?').run(conv.id)
+      db.prepare("UPDATE wa_conversations SET scored_at=strftime('%s','now') WHERE id=? AND score_attempts>=3").run(conv.id)
+    }
+  }
+}
+setInterval(() => { sweepAndScoreConversations().catch(e => console.error('⚠ [Lucas] sweep error:', e.message)) }, 5 * 60 * 1000)
+
+// ── Seguimientos automáticos ───────────────────────────────────────────────────
+// Genera un mensaje de reengagement — igual que Lucas, bypassea Dify (no tiene sentido
+// pedirle a la app de chat del cliente que redacte un mensaje "meta") y usa fallback a env.
+async function generateFollowupMessage(transcriptText) {
+  let provider = null, apiKey = null, model = null
+  if (process.env.ANTHROPIC_API_KEY)   { provider = 'anthropic'; apiKey = process.env.ANTHROPIC_API_KEY; model = 'claude-haiku-4-5-20251001' }
+  else if (process.env.OPENAI_API_KEY) { provider = 'openai';    apiKey = process.env.OPENAI_API_KEY;    model = 'gpt-4o-mini' }
+  else throw new Error('Seguimientos: sin ANTHROPIC_API_KEY/OPENAI_API_KEY configurada')
+
+  const system = 'Redactá un mensaje de WhatsApp breve (máx 2 líneas) para retomar contacto con un lead que dejó de responder. Natural, sin sonar desesperado, sin repetir literalmente lo último que se dijo. No uses placeholders. Devolvé solo el mensaje, sin comillas ni explicaciones.'
+  const messages = [{ role: 'user', content: `Conversación hasta ahora:\n${transcriptText}` }]
+
+  if (provider === 'anthropic') {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: 150, system, messages }),
+    })
+    const d = await r.json()
+    if (d.error) throw new Error(d.error.message || JSON.stringify(d.error))
+    return d.content?.[0]?.text?.trim() || ''
+  }
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ model, max_tokens: 150, messages: [{ role: 'system', content: system }, ...messages] }),
+  })
+  const d = await r.json()
+  if (d.error) throw new Error(d.error.message || JSON.stringify(d.error))
+  return d.choices?.[0]?.message?.content?.trim() || ''
+}
+
+function withinHours(startStr, endStr) {
+  const now = new Date()
+  const cur = now.getHours() * 60 + now.getMinutes()
+  const [sh, sm] = (startStr || '08:00').split(':').map(Number)
+  const [eh, em] = (endStr   || '20:00').split(':').map(Number)
+  return cur >= (sh * 60 + sm) && cur <= (eh * 60 + em)
+}
+
+async function sendFollowups() {
+  // Candidatas: conversaciones abiertas en modo bot, cuyo agente activo del workspace
+  // tiene cadencia de seguimiento configurada.
+  const candidates = db.prepare(`
+    SELECT wc.* FROM wa_conversations wc
+    JOIN channel_instances ci ON ci.workspace_id=wc.workspace_id AND ci.session_name=wc.session_name AND ci.provider='waha'
+    WHERE wc.closed=0 AND wc.bot_mode='bot'
+  `).all()
+
+  for (const conv of candidates) {
+    try {
+      const agent = resolveActiveAgent(conv.workspace_id, conv.session_name)
+      if (!agent || agent.followup_cadence === 'none') continue
+      if (!withinHours(agent.followup_hours_start, agent.followup_hours_end)) continue
+
+      const intervals = JSON.parse(agent.followup_intervals || '[]')
+      const nextCheckpoint = intervals[conv.followup_count]
+      if (nextCheckpoint == null) continue  // cadencia agotada
+
+      const elapsedHours = (Math.floor(Date.now() / 1000) - conv.updated_at) / 3600
+      if (elapsedHours < nextCheckpoint) continue
+
+      const settings = getChannelSettings(conv.workspace_id)
+      const msgs = await fetchWahaMessages(settings, conv.session_name, conv.wa_from, 30)
+      const transcriptText = msgs.slice(-30)
+        .map(m => `${m.fromMe ? 'Bot' : 'Lead'}: ${m.body || m.caption || ''}`)
+        .join('\n').slice(0, 4000)
+
+      const followupText = await generateFollowupMessage(transcriptText)
+      if (!followupText) continue
+
+      const chatId = conv.wa_from.includes('@') ? conv.wa_from : `${conv.wa_from}@c.us`
+      await wahaReq(settings, '/api/sendText', {
+        method: 'POST',
+        body: JSON.stringify({ chatId, text: followupText, session: conv.session_name }),
+      })
+      db.prepare("UPDATE wa_conversations SET followup_count=followup_count+1, last_followup_at=strftime('%s','now') WHERE id=?").run(conv.id)
+      console.log(`📨 [Seguimiento] ${conv.id} → checkpoint ${nextCheckpoint}h: ${followupText.slice(0, 50)}`)
+    } catch (e) {
+      console.error('⚠ [Seguimiento] Error en conversación:', conv.id, e.message)
+    }
+  }
+}
+setInterval(() => { sendFollowups().catch(e => console.error('⚠ [Seguimiento] sweep error:', e.message)) }, 10 * 60 * 1000)
+
+app.post('/api/followups/run-now', requireAriaAuth, async (req, res) => {
+  sendFollowups().catch(e => console.error('⚠ [Seguimiento] run-now error:', e.message))
+  res.json({ ok: true })
+})
+
 // ── AI: sugerir respuesta ─────────────────────────────────────────────────────
 app.post('/api/ai/suggest', requireAriaAuth, async (req, res) => {
   const { messages, contactName } = req.body || {}
@@ -2505,7 +3150,7 @@ const FLOWS_DIR = join(__dirname, '../flows')
 // ── Dify console API helpers ──────────────────────────────────────────────────
 
 // Retorna { accessToken, csrfToken } — Dify usa double-submit cookie para CSRF
-async function getDifyAdminToken() {
+async function getDifyAdminToken(attempt = 1) {
   const difyUrl  = process.env.DIFY_URL            || 'https://dify.saludok.com.ar'
   const email    = process.env.DIFY_ADMIN_EMAIL    || 'hernan527@gmail.com'
   const password = process.env.DIFY_ADMIN_PASSWORD || ''
@@ -2515,24 +3160,42 @@ async function getDifyAdminToken() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password: passwordB64, language: 'en-US', remember_me: true }),
   })
+  // Dify a veces devuelve 500 por una conexión de Postgres recién cerrada del lado
+  // del pool (intermitente, no relacionado a credenciales) — reintentar una vez.
+  if (!r.ok && attempt < 3) {
+    await new Promise(res => setTimeout(res, 500 * attempt))
+    return getDifyAdminToken(attempt + 1)
+  }
   const cookies = typeof r.headers.getSetCookie === 'function'
     ? r.headers.getSetCookie()
     : [(r.headers.get('set-cookie') || '')]
+  // Dify puede mandar las cookies con prefijo __Host- (ej: __Host-access_token) —
+  // buscar por sufijo del nombre, no por nombre exacto, y conservar el nombre real
+  // recibido para devolverlo tal cual en el Cookie header de las siguientes requests.
   const get = (name) => {
-    const c = cookies.find(c => c.startsWith(name + '='))
-    return c ? c.split(';')[0].slice(name.length + 1) : null
+    const c = cookies.find(c => {
+      const cookieName = c.split('=')[0]
+      return cookieName === name || cookieName.endsWith(`-${name}`)
+    })
+    if (!c) return null
+    const cookieName = c.split('=')[0]
+    return { name: cookieName, value: c.slice(cookieName.length + 1).split(';')[0] }
   }
   const accessToken = get('access_token')
   const csrfToken   = get('csrf_token')
   if (!accessToken) throw new Error('Dify login falló — no se recibió access_token')
-  return { accessToken, csrfToken }
+  return {
+    accessToken: accessToken.value, accessTokenName: accessToken.name,
+    csrfToken: csrfToken?.value, csrfTokenName: csrfToken?.name,
+  }
 }
 
 // Actualiza pre_prompt + parámetros del modelo en una app Dify sin pisar el modelo configurado
-async function difyUpdateModelConfig(appId, { prePrompt, temperature, topP, datasetId }) {
-  // Leer config actual para preservar modelo
-  const cur = await difyConsoleApi(`/apps/${appId}/model-config`)
-  const curData = await cur.json().catch(() => ({}))
+async function difyUpdateModelConfig(appId, { prePrompt, temperature, topP, datasetId, agentMode }) {
+  // Leer config actual para preservar lo no explicitado — OJO: GET /apps/:id/model-config
+  // no existe en Dify (405), la config embebida viene en el detalle de la app.
+  const cur = await difyConsoleApi(`/apps/${appId}`)
+  const curData = await cur.json().then(d => d?.model_config || {}).catch(() => ({}))
   const model = curData?.model || { provider: 'openai', name: 'gpt-4o-mini', mode: 'chat' }
   const completionParams = { ...(curData?.model?.completion_params || {}), max_tokens: 800 }
   if (temperature !== undefined) completionParams.temperature = parseFloat(temperature)
@@ -2567,22 +3230,190 @@ async function difyUpdateModelConfig(appId, { prePrompt, temperature, topP, data
     model:                            { ...model, completion_params: completionParams },
   }
   if (datasetConfigs) payload.dataset_configs = datasetConfigs
+  // agent_mode (tools del agente, ej. saveLeadData) — preservar lo ya configurado si no
+  // se pasa uno nuevo explícitamente, para no perder la tool al guardar instrucciones/config.
+  payload.agent_mode = agentMode ?? curData?.agent_mode ?? { enabled: false, strategy: 'function_call', tools: [] }
 
   await difyConsoleApi(`/apps/${appId}/model-config`, 'POST', payload)
 }
 
 // Llama console API de Dify — cookie + X-CSRFToken para POST/PUT/DELETE
 async function difyConsoleApi(path, method = 'GET', body = null) {
-  const { accessToken, csrfToken } = await getDifyAdminToken()
+  const { accessToken, accessTokenName, csrfToken, csrfTokenName } = await getDifyAdminToken()
   const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
   const headers = {
     'Content-Type': 'application/json',
-    'Cookie': `access_token=${accessToken}${csrfToken ? `; csrf_token=${csrfToken}` : ''}`,
+    'Cookie': `${accessTokenName}=${accessToken}${csrfToken ? `; ${csrfTokenName}=${csrfToken}` : ''}`,
   }
-  if (csrfToken && method !== 'GET') headers['X-CSRF-Token'] = csrfToken
+  // Algunos GET del console API de Dify (ej: listar tool-providers) también exigen el
+  // header CSRF, no solo los métodos de escritura — mandarlo siempre que haya token.
+  if (csrfToken) headers['X-CSRF-Token'] = csrfToken
   const opts = { method, headers }
   if (body) opts.body = JSON.stringify(body)
   return fetch(`${difyUrl}/console/api${path}`, opts)
+}
+
+// Registra (una sola vez por workspace, idempotente) el custom tool "saveLeadData" en Dify,
+// con la URL del endpoint ya fija por workspace — así el workspace queda validado del lado
+// del servidor y no depende de que el LLM lo mande bien.
+async function ensureAriaToolProvider(workspaceId) {
+  const cs = db.prepare('SELECT dify_tool_provider_id FROM channel_settings WHERE workspace_id=?').get(workspaceId)
+  if (cs?.dify_tool_provider_id) {
+    return { providerId: cs.dify_tool_provider_id, providerName: `aria_crm_${workspaceId}`.replace(/-/g, '') }
+  }
+
+  const baseUrl = process.env.ARIA_PUBLIC_URL || 'https://aria.saludok.com.ar'
+  const providerName = `aria_crm_${workspaceId}`.replace(/-/g, '')
+  const schema = JSON.stringify({
+    openapi: '3.0.0',
+    info: { title: 'ARIA CRM Tool', version: '1.0' },
+    servers: [{ url: `${baseUrl}/api/tools/${workspaceId}` }],
+    paths: {
+      '/save-lead-data': {
+        post: {
+          operationId: 'saveLeadData',
+          summary: 'Guarda en el CRM datos de contacto detectados en la conversacion (email, empresa, telefono) o una nota relevante. Usar SIEMPRE que el cliente comparta un dato nuevo.',
+          requestBody: {
+            content: { 'application/json': { schema: {
+              type: 'object',
+              required: ['ref'],
+              properties: {
+                ref:     { type: 'string', description: 'ID interno de contacto - copiarlo EXACTO del membrete [ref:...] al inicio del mensaje del usuario, nunca inventarlo ni omitirlo.' },
+                email:   { type: 'string' },
+                company: { type: 'string' },
+                phone:   { type: 'string' },
+                note:    { type: 'string', description: 'Dato o resumen relevante que no entra en los campos anteriores' },
+              },
+            } } },
+          },
+          responses: { '200': { description: 'ok' } },
+        },
+      },
+    },
+  })
+
+  const addResp = await difyConsoleApi('/workspaces/current/tool-provider/api/add', 'POST', {
+    provider: providerName,
+    icon: { content: '🧩', background: '#D5F5E3' },
+    credentials: { auth_type: 'none' },
+    schema_type: 'openapi',
+    schema,
+    privacy_policy: '',
+    labels: [],
+  })
+  const addData = await addResp.json().catch(() => ({}))
+  if (addData.result !== 'success') throw new Error('Error registrando tool provider en Dify: ' + JSON.stringify(addData))
+
+  const providers = await difyConsoleApi('/workspaces/current/tool-providers').then(r => r.json())
+  const match = Array.isArray(providers) ? providers.find(p => p.name === providerName) : null
+  if (!match) throw new Error('Tool provider creado pero no se encontró en el listado de Dify')
+
+  db.prepare(`
+    INSERT INTO channel_settings (workspace_id, dify_tool_provider_id, updated_at) VALUES (?,?,strftime('%s','now'))
+    ON CONFLICT(workspace_id) DO UPDATE SET dify_tool_provider_id=excluded.dify_tool_provider_id, updated_at=excluded.updated_at
+  `).run(workspaceId, match.id)
+
+  return { providerId: match.id, providerName }
+}
+
+// Arma la entrada de agent_mode.tools[] para la tool de ARIA, lista para pasar al
+// model-config de un agente agent-chat.
+function buildAriaSaveLeadTool({ providerId, providerName }) {
+  return {
+    provider_id: providerId,
+    provider_type: 'api',
+    provider_name: providerName,
+    tool_name: 'saveLeadData',
+    tool_label: 'saveLeadData',
+    tool_parameters: {},
+    enabled: true, isDeleted: false, notAuthor: false,
+  }
+}
+
+// ── Integraciones del agente: tools builtin de Dify + tools custom (endpoints propios) ──
+
+// Catálogo curado de tools builtin ya instaladas en Dify, confirmadas contra la API real
+// (nombres/ids no son inventados — se verificaron vía /tool-provider/builtin/:name/tools).
+const AVAILABLE_BUILTIN_TOOLS = {
+  webscraper:  { provider_id: 'webscraper', tool_name: 'webscraper',  label: 'Web Scraper', description: 'Lee el contenido de una URL durante la charla.' },
+  wikipedia:   { provider_id: 'langgenius/wikipedia/wikipedia', tool_name: 'wikipedia_search', label: 'Wikipedia', description: 'Busca información general en Wikipedia.' },
+  current_time:{ provider_id: 'time', tool_name: 'current_time', label: 'Hora actual', description: 'Sabe la fecha/hora actual (útil para agendar).' },
+  code:        { provider_id: 'code', tool_name: 'simple_code', label: 'Code Interpreter', description: 'Ejecuta cálculos o lógica simple en código.' },
+}
+
+function slugify(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30) || 'tool'
+}
+
+// Registra un endpoint arbitrario del usuario (Excel/Sheets vía API propia, CRM externo, lo que
+// sea) como una tool custom de Dify — mismo mecanismo que ensureAriaToolProvider, generalizado.
+async function registerCustomTool({ botId, name, description, url, method, params }) {
+  const providerName = `custom_${botId.replace(/-/g, '').slice(0, 8)}_${slugify(name)}_${Date.now().toString(36).slice(-4)}`
+  const operationId = slugify(name)
+  const u = new URL(url)
+  const properties = {}
+  for (const p of (params || [])) {
+    properties[p.name] = { type: p.type || 'string', description: p.description || '' }
+  }
+  const schema = JSON.stringify({
+    openapi: '3.0.0',
+    info: { title: name, version: '1.0' },
+    servers: [{ url: `${u.protocol}//${u.host}` }],
+    paths: {
+      [u.pathname]: {
+        [(method || 'GET').toLowerCase()]: {
+          operationId,
+          summary: description || name,
+          ...(method === 'GET'
+            ? { parameters: Object.keys(properties).map(k => ({ name: k, in: 'query', description: properties[k].description, schema: { type: properties[k].type } })) }
+            : { requestBody: { content: { 'application/json': { schema: { type: 'object', properties } } } } }),
+          responses: { '200': { description: 'ok' } },
+        },
+      },
+    },
+  })
+
+  const addResp = await difyConsoleApi('/workspaces/current/tool-provider/api/add', 'POST', {
+    provider: providerName,
+    icon: { content: '🔌', background: '#D5E8F5' },
+    credentials: { auth_type: 'none' },
+    schema_type: 'openapi',
+    schema,
+    privacy_policy: '', labels: [],
+  })
+  const addData = await addResp.json().catch(() => ({}))
+  if (addData.result !== 'success') throw new Error('Error registrando la integración en Dify: ' + JSON.stringify(addData))
+
+  const providers = await difyConsoleApi('/workspaces/current/tool-providers').then(r => r.json())
+  const match = Array.isArray(providers) ? providers.find(p => p.name === providerName) : null
+  if (!match) throw new Error('Integración creada pero no se encontró en el listado de Dify')
+
+  return { providerId: match.id, providerName, toolName: operationId }
+}
+
+// Arma el agent_mode.tools[] completo de un agente: la tool fija de ARIA (saveLeadData) +
+// las builtin que el usuario activó + todas sus tools custom registradas.
+function buildFullAgentMode(workspaceId, botId, extraBuiltinKeys, ariaToolProvider) {
+  const tools = [buildAriaSaveLeadTool(ariaToolProvider)]
+  for (const key of (extraBuiltinKeys || [])) {
+    const t = AVAILABLE_BUILTIN_TOOLS[key]
+    if (!t) continue
+    tools.push({
+      provider_id: t.provider_id, provider_type: 'builtin', provider_name: t.provider_id,
+      tool_name: t.tool_name, tool_label: t.tool_name, tool_parameters: {},
+      enabled: true, isDeleted: false, notAuthor: false,
+    })
+  }
+  const customTools = db.prepare('SELECT * FROM agent_custom_tools WHERE bot_id=? AND dify_provider_id IS NOT NULL').all(botId)
+  for (const ct of customTools) {
+    tools.push({
+      provider_id: ct.dify_provider_id, provider_type: 'api', provider_name: ct.dify_provider_name,
+      tool_name: slugify(ct.name), tool_label: ct.name, tool_parameters: {},
+      enabled: true, isDeleted: false, notAuthor: false,
+    })
+  }
+  return { enabled: true, strategy: 'function_call', max_iteration: 5, tools }
 }
 
 // Service API de Dify — Bearer token (para operaciones de dataset/documentos)
@@ -2832,6 +3663,11 @@ app.post('/api/agents/quick-create', requireAriaAuth, async (req, res) => {
 
   const hasInteg = integrations && integrations !== 'none'
 
+  const usage = getPlanAndUsage(workspaceId)
+  if (usage.agentsLimitReached) {
+    return res.status(403).json({ error: `Llegaste al límite de agentes de tu plan (${usage.plan.name}: ${usage.plan.max_agents}) — actualizá tu plan para crear más.` })
+  }
+
   try {
     // 1. Buscar agentes anteriores similares para usar como referencia
     const prevAgents = db.prepare(
@@ -2884,23 +3720,34 @@ Solo devolvé el system prompt listo para usar, sin explicaciones ni comillas.`,
       await difyConsoleApi(`/apps/${appId}/workflows/draft`, 'PUT', { graph })
       hasWorkflow = true
     } else {
-      // ── Chat simple ───────────────────────────────────────────────────────
+      // ── Agent Chat (no "chat" simple): soporta tools + memoria de conversación ──
       const createResp = await difyConsoleApi('/apps', 'POST',
-        { name: agentName, mode: 'chat', icon: '🤖', icon_background: '#FFEAD5', description })
+        { name: agentName, mode: 'agent-chat', icon: '🤖', icon_background: '#FFEAD5', description })
       const appData = await createResp.json()
       if (!appData.id) throw new Error('Error creando app: ' + JSON.stringify(appData))
       appId = appData.id
 
       const modelProvider = appData.model_config?.model?.provider || 'openai'
       const modelName     = appData.model_config?.model?.name     || 'gpt-4o-mini'
+      let agentMode = { enabled: false, strategy: 'function_call', tools: [] }
+      try {
+        const toolProvider = await ensureAriaToolProvider(workspaceId)
+        agentMode = { enabled: true, strategy: 'function_call', max_iteration: 5, tools: [buildAriaSaveLeadTool(toolProvider)] }
+      } catch (toolErr) {
+        console.warn('⚠ No se pudo conectar la tool saveLeadData (agente queda sin ella):', toolErr.message)
+      }
+      const toolNote = agentMode.enabled
+        ? `\n\n## Guardado de datos del contacto\nCada mensaje del usuario empieza con un membrete interno [ref:ID] — nunca lo menciones ni lo repitas al cliente. Cuando el cliente comparta un dato nuevo (email, empresa, teléfono) o algo relevante para el seguimiento, usá la tool saveLeadData copiando ese ID exacto en el parámetro ref. No inventes el ref, no lo omitas.`
+        : ''
       await difyConsoleApi(`/apps/${appId}/model-config`, 'POST', {
-        pre_prompt: systemPrompt,
+        pre_prompt: systemPrompt + toolNote,
         opening_statement: '¡Hola! ¿En qué puedo ayudarte hoy?',
         suggested_questions: [], suggested_questions_after_answer: { enabled: false },
         speech_to_text: { enabled: false }, retriever_resource: { enabled: false },
         sensitive_word_avoidance: { enabled: false }, more_like_this: { enabled: false },
         user_input_form: [],
         model: { provider: modelProvider, name: modelName, mode: 'chat', completion_params: { temperature: 0.7, max_tokens: 800 } },
+        agent_mode: agentMode,
       })
     }
 
@@ -3015,10 +3862,17 @@ app.post('/api/agents/create-draft', requireAriaAuth, async (req, res) => {
   const { name, description, template_id } = req.body || {}
   if (!name) return res.status(400).json({ error: 'name requerido' })
   try {
-    // 1. Crear app en Dify
+    const workspaceId = req.ariaUser.workspaceId
+
+    const usage = getPlanAndUsage(workspaceId)
+    if (usage.agentsLimitReached) {
+      return res.status(403).json({ error: `Llegaste al límite de agentes de tu plan (${usage.plan.name}: ${usage.plan.max_agents}) — actualizá tu plan para crear más.` })
+    }
+
+    // 1. Crear app en Dify — agent-chat (no chat simple): soporta tools + memoria de conversación
     const createResp = await difyConsoleApi('/apps', 'POST', {
       name,
-      mode: 'chat',
+      mode: 'agent-chat',
       icon: '🤖',
       icon_background: '#FFEAD5',
       description: description || '',
@@ -3044,14 +3898,20 @@ app.post('/api/agents/create-draft', requireAriaAuth, async (req, res) => {
       })
       const dsData = await dsResp.json()
       difyDatasetId = dsData.id || null
-      if (difyDatasetId) {
-        console.log(`✓ Dify dataset creado: ${difyDatasetId}`)
-        // 4. Enlazar dataset a la app
-        await difyUpdateModelConfig(difyAppId, { datasetId: difyDatasetId })
-      }
     } catch (dsErr) {
       console.warn('⚠ No se pudo crear dataset Dify (continúa sin KB):', dsErr.message)
     }
+
+    // 4. Registrar/reusar la tool saveLeadData de ARIA para este workspace y conectarla al agente
+    let agentMode = { enabled: false, strategy: 'function_call', tools: [] }
+    try {
+      const toolProvider = await ensureAriaToolProvider(workspaceId)
+      agentMode = { enabled: true, strategy: 'function_call', max_iteration: 5, tools: [buildAriaSaveLeadTool(toolProvider)] }
+    } catch (toolErr) {
+      console.warn('⚠ No se pudo conectar la tool saveLeadData (agente queda sin ella):', toolErr.message)
+    }
+    await difyUpdateModelConfig(difyAppId, { datasetId: difyDatasetId || undefined, agentMode })
+    if (difyDatasetId) console.log(`✓ Dify dataset creado: ${difyDatasetId}`)
 
     // 5. Guardar en ARIA DB
     const agentId = randomUUID()
@@ -3067,8 +3927,21 @@ app.post('/api/agents/create-draft', requireAriaAuth, async (req, res) => {
 })
 
 // Generar instrucciones con LLM (incluye KB de Tiledesk si existe)
+const GOAL_LABELS = {
+  vender: 'Vender y recomendar productos/servicios',
+  resolver_consultas: 'Resolver consultas y preguntas frecuentes',
+  gestionar_reclamos: 'Gestionar reclamos (contener, registrar y resolver o escalar a tiempo)',
+  recolectar_datos: 'Recolectar datos del contacto (nombre, zona, datos clave) de a uno, sin interrogar',
+}
+
 app.post('/api/agents/generate-instructions', requireAriaAuth, async (req, res) => {
-  const { agent_name, tone, nationality, company_name, company_description, websites, temperature, derivation_notes, bot_id, template_id } = req.body || {}
+  const { agent_name, tone, nationality, company_name, company_description, websites, temperature,
+    derivation_notes, bot_id, template_id, goals, goal_success_criteria, behavior_notes } = req.body || {}
+
+  const goalLines = (goals || []).filter(g => g !== 'personalizado').map(g => `  - ${GOAL_LABELS[g] || g}`)
+  if ((goals || []).includes('personalizado') && goal_success_criteria) goalLines.push(`  - Personalizado: ${goal_success_criteria}`)
+  const goalsSection = goalLines.length ? `\n- Objetivos del agente:\n${goalLines.join('\n')}` : ''
+  const behaviorSection = behavior_notes ? `\n- Reglas de comportamiento y límites: ${behavior_notes}` : ''
 
   // Leer KB del bot desde ARIA DB (aislada por bot_id)
   let kbSection = ''
@@ -3099,7 +3972,7 @@ Datos del agente:
 - Empresa: ${company_name}
 - Descripción de la empresa: ${company_description}
 ${websites?.filter(Boolean).length ? `- Sitios web: ${websites.filter(Boolean).join(', ')}` : ''}
-${derivation_notes ? `- Criterios de derivación: ${derivation_notes}` : ''}${kbSection}
+${derivation_notes ? `- Criterios de derivación: ${derivation_notes}` : ''}${goalsSection}${behaviorSection}${kbSection}
 
 El prompt resultante debe tener estas secciones completamente redactadas (no como esquema, sino como texto final listo para usar):
 
@@ -3132,7 +4005,7 @@ Escribí solo el prompt final redactado, sin explicaciones ni meta-comentarios.`
 - Empresa: ${company_name}
 - Descripción de la empresa: ${company_description}
 ${websites?.filter(Boolean).length ? `- Sitios web: ${websites.filter(Boolean).join(', ')}` : ''}
-${derivation_notes ? `- Instrucciones de derivación: ${derivation_notes}` : ''}${kbSection}
+${derivation_notes ? `- Instrucciones de derivación: ${derivation_notes}` : ''}${goalsSection}${behaviorSection}${kbSection}
 
 El prompt debe incluir:
 1. Definición del agente (nombre, rol, perfil, limitaciones)
@@ -3141,13 +4014,18 @@ El prompt debe incluir:
 4. Audiencia dirigida
 5. Flujo conversacional (pasos numerados)
 6. Reglas y buenas prácticas
+7. Reglas de comportamiento y límites claros (si se proveyeron)
 
 Escribí solo el prompt, sin explicaciones ni texto extra. El tono debe ser ${tone.toLowerCase()}, con expresiones propias de ${nationality}.`
+
+  // Instrucción fija de la tool saveLeadData — se agrega siempre, no depende de que el
+  // LLM generador la redacte bien (es mecánica, no de estilo).
+  const TOOL_INSTRUCTION = `\n\n## Guardado de datos del contacto\nCada mensaje del usuario empieza con un membrete interno [ref:ID] — nunca lo menciones ni lo repitas al cliente. Cuando el cliente comparta un dato nuevo (email, empresa, teléfono) o algo relevante para el seguimiento, usá la tool saveLeadData copiando ese ID exacto en el parámetro ref. No inventes el ref, no lo omitas.`
 
   try {
     const { text, model, usage } = await callLLM({ messages: [{ role: 'user', content: prompt }], max_tokens: 2048, workspaceId: req.ariaUser?.workspaceId })
     trackLlmUsage(req.ariaUser?.workspaceId, 'generate-instructions', model, usage)
-    res.json({ instructions: text })
+    res.json({ instructions: text + TOOL_INSTRUCTION })
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
@@ -3167,6 +4045,40 @@ app.post('/api/agents/playground', requireAriaAuth, async (req, res) => {
     res.status(500).json({ error: e.message })
   }
 })
+
+// Llama /v1/chat-messages de Dify en modo streaming (obligatorio para apps agent-chat,
+// Dify rechaza 'blocking' en ese modo) y devuelve solo el resultado final. Sirve tanto
+// para apps 'chat' (event 'message') como 'agent-chat' (event 'agent_message').
+async function callDifyChat(apiKey, { query, conversationId, user }) {
+  const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
+  const r = await fetch(`${difyUrl}/v1/chat-messages`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      inputs: {}, query, response_mode: 'streaming',
+      conversation_id: conversationId || '', user: user || 'aria',
+    }),
+  })
+  const raw = await r.text()
+  if (!r.ok) {
+    let parsed = {}
+    try { parsed = JSON.parse(raw) } catch {}
+    throw new Error(parsed.message || raw.slice(0, 200))
+  }
+  let answer = '', convId = null, usage = { input_tokens: 0, output_tokens: 0 }
+  for (const line of raw.split('\n')) {
+    if (!line.startsWith('data: ')) continue
+    let evt
+    try { evt = JSON.parse(line.slice(6)) } catch { continue }
+    if (evt.conversation_id) convId = evt.conversation_id
+    if (evt.event === 'agent_message' || evt.event === 'message') answer += evt.answer || ''
+    if (evt.event === 'message_end' && evt.metadata?.usage) {
+      usage = { input_tokens: evt.metadata.usage.prompt_tokens || 0, output_tokens: evt.metadata.usage.completion_tokens || 0 }
+    }
+    if (evt.event === 'error') throw new Error(evt.message || 'Dify stream error')
+  }
+  return { answer: answer.trim(), conversationId: convId, usage }
+}
 
 // ── Test chat real con bot Tiledesk ───────────────────────────────────────────
 // Según docs: POST a support-group-{UUID}/messages crea la request automáticamente.
@@ -3204,28 +4116,16 @@ app.post('/api/agents/:botId/test-chat', requireAriaAuth, async (req, res) => {
   if (reset) testSessions.delete(botId)
 
   const session = testSessions.get(botId) || {}
-  const difyUrl = process.env.DIFY_URL || 'https://dify.saludok.com.ar'
   const queryText = text || '¡Hola!'
 
   try {
-    const r = await fetch(`${difyUrl}/v1/chat-messages`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${agent.dify_api_key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        inputs: {},
-        query: queryText,
-        response_mode: 'blocking',
-        conversation_id: session.conversationId || '',
-        user: req.ariaUser.workspaceId,
-      }),
+    const { answer, conversationId } = await callDifyChat(agent.dify_api_key, {
+      query: queryText, conversationId: session.conversationId, user: req.ariaUser.workspaceId,
     })
-    const d = await r.json()
-    if (!r.ok) throw new Error(d.message || JSON.stringify(d).slice(0, 200))
+    testSessions.set(botId, { conversationId })
 
-    testSessions.set(botId, { conversationId: d.conversation_id })
-
-    if (reset) return res.json({ welcome: d.answer || '¡Hola! ¿En qué puedo ayudarte?', reply: null })
-    return res.json({ welcome: null, reply: d.answer || '(sin respuesta)' })
+    if (reset) return res.json({ welcome: answer || '¡Hola! ¿En qué puedo ayudarte?', reply: null })
+    return res.json({ welcome: null, reply: answer || '(sin respuesta)' })
   } catch (e) {
     console.error('test-chat error:', e.message)
     res.status(500).json({ error: e.message })
@@ -3299,6 +4199,16 @@ app.get('/api/agents/metadata', requireAriaAuth, (req, res) => {
     derivation_users:    r.derivation_users,
     dify_app_id:         r.dify_app_id,
     created_at:          r.created_at,
+    followup_cadence:        r.followup_cadence,
+    followup_intervals:      r.followup_intervals,
+    followup_hours_start:    r.followup_hours_start,
+    followup_hours_end:      r.followup_hours_end,
+    derivation_mode:            r.derivation_mode,
+    derivation_score_threshold: r.derivation_score_threshold,
+    goals:                   r.goals,
+    goal_success_criteria:   r.goal_success_criteria,
+    behavior_notes:          r.behavior_notes,
+    extra_builtin_tools:     r.extra_builtin_tools,
   }))
   res.json(mapped)
 })
@@ -3376,7 +4286,8 @@ const AGENT_FILES_DIR = process.env.ARIA_DB_PATH
 // Guardar instrucciones + re-inyectar en Tiledesk (solo tilebots)
 app.put('/api/agents/:botId/instructions', requireAriaAuth, async (req, res) => {
   const { botId } = req.params
-  const { instructions, tone, nationality, company_name, company_description, derivation_notes } = req.body || {}
+  const { instructions, tone, nationality, company_name, company_description, derivation_notes,
+    derivation_mode, derivation_score_threshold, goals, goal_success_criteria, behavior_notes } = req.body || {}
   const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
   if (!agent) return res.status(404).json({ error: 'Agente no encontrado' })
   try {
@@ -3388,26 +4299,99 @@ app.put('/api/agents/:botId/instructions', requireAriaAuth, async (req, res) => 
     db.prepare(`UPDATE dify_agents SET system_prompt=?,
       tone=COALESCE(?,tone), nationality=COALESCE(?,nationality),
       company_name=COALESCE(?,company_name), company_description=COALESCE(?,company_description),
-      derivation_notes=COALESCE(?,derivation_notes)
+      derivation_notes=COALESCE(?,derivation_notes),
+      derivation_mode=COALESCE(?,derivation_mode),
+      derivation_score_threshold=COALESCE(?,derivation_score_threshold),
+      goals=COALESCE(?,goals), goal_success_criteria=COALESCE(?,goal_success_criteria),
+      behavior_notes=COALESCE(?,behavior_notes)
       WHERE id=? AND workspace_id=?`)
       .run(instructions||null, tone||null, nationality||null, company_name||null,
-        company_description||null, derivation_notes||null, botId, req.ariaUser.workspaceId)
+        company_description||null, derivation_notes||null, derivation_mode||null,
+        derivation_score_threshold ?? null, goals ? JSON.stringify(goals) : null,
+        goal_success_criteria || null, behavior_notes || null, botId, req.ariaUser.workspaceId)
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
 app.put('/api/agents/:botId/config', requireAriaAuth, async (req, res) => {
   const { botId } = req.params
-  const { temperature, top_p, channels, derivation_users } = req.body || {}
+  const { temperature, top_p, channels, derivation_users,
+    followup_cadence, followup_intervals, followup_hours_start, followup_hours_end, extra_builtin_tools } = req.body || {}
   const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
   if (!agent) return res.status(404).json({ error: 'Agente no encontrado' })
   try {
     const t  = parseFloat(temperature ?? agent.temperature ?? 0.7)
     const tp = parseFloat(top_p ?? agent.top_p ?? 1.0)
-    await difyUpdateModelConfig(agent.dify_app_id, { prePrompt: agent.system_prompt || '', temperature: t, topP: tp })
-    db.prepare(`UPDATE dify_agents SET temperature=?, top_p=?, channels=?, derivation_users=? WHERE id=? AND workspace_id=?`)
-      .run(t, tp, JSON.stringify(channels || ['__all__']), JSON.stringify(derivation_users || ['__all__']),
+    const channelsJson = channels !== undefined ? JSON.stringify(channels) : agent.channels
+    const derivationUsersJson = derivation_users !== undefined ? JSON.stringify(derivation_users) : agent.derivation_users
+    const builtinToolsJson = extra_builtin_tools !== undefined ? JSON.stringify(extra_builtin_tools) : agent.extra_builtin_tools
+
+    const ariaToolProvider = await ensureAriaToolProvider(req.ariaUser.workspaceId)
+    const agentMode = buildFullAgentMode(req.ariaUser.workspaceId, botId, JSON.parse(builtinToolsJson || '[]'), ariaToolProvider)
+    await difyUpdateModelConfig(agent.dify_app_id, { prePrompt: agent.system_prompt || '', temperature: t, topP: tp, agentMode })
+
+    db.prepare(`UPDATE dify_agents SET temperature=?, top_p=?, channels=?, derivation_users=?, extra_builtin_tools=?,
+      followup_cadence=COALESCE(?,followup_cadence), followup_intervals=COALESCE(?,followup_intervals),
+      followup_hours_start=COALESCE(?,followup_hours_start), followup_hours_end=COALESCE(?,followup_hours_end)
+      WHERE id=? AND workspace_id=?`)
+      .run(t, tp, channelsJson, derivationUsersJson, builtinToolsJson,
+        followup_cadence || null, followup_intervals ? JSON.stringify(followup_intervals) : null,
+        followup_hours_start || null, followup_hours_end || null,
         botId, req.ariaUser.workspaceId)
+    res.json({ ok: true })
+  } catch (e) { res.status(500).json({ error: e.message }) }
+})
+
+// ── Integraciones del agente (tools) ──────────────────────────────────────────
+app.get('/api/agents/available-tools', requireAriaAuth, (req, res) => {
+  res.json(Object.entries(AVAILABLE_BUILTIN_TOOLS).map(([key, t]) => ({ key, label: t.label, description: t.description })))
+})
+
+app.get('/api/agents/:botId/custom-tools', requireAriaAuth, (req, res) => {
+  const rows = db.prepare('SELECT id, name, description, url, method, params, created_at FROM agent_custom_tools WHERE bot_id=? AND workspace_id=?')
+    .all(req.params.botId, req.ariaUser.workspaceId)
+  res.json(rows.map(r => ({ ...r, params: JSON.parse(r.params || '[]') })))
+})
+
+app.post('/api/agents/:botId/custom-tools', requireAriaAuth, async (req, res) => {
+  const { botId } = req.params
+  const { name, description, url, method, params } = req.body || {}
+  if (!name || !url) return res.status(400).json({ error: 'name y url son requeridos' })
+  const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
+  if (!agent) return res.status(404).json({ error: 'Agente no encontrado' })
+  try {
+    const { providerId, providerName } = await registerCustomTool({ botId, name, description, url, method: method || 'GET', params })
+    const id = randomUUID()
+    db.prepare(`INSERT INTO agent_custom_tools (id, bot_id, workspace_id, name, description, url, method, params, dify_provider_id, dify_provider_name)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, botId, req.ariaUser.workspaceId, name, description || null, url, method || 'GET', JSON.stringify(params || []), providerId, providerName)
+
+    const ariaToolProvider = await ensureAriaToolProvider(req.ariaUser.workspaceId)
+    const agentMode = buildFullAgentMode(req.ariaUser.workspaceId, botId, JSON.parse(agent.extra_builtin_tools || '[]'), ariaToolProvider)
+    await difyUpdateModelConfig(agent.dify_app_id, { prePrompt: agent.system_prompt || '', temperature: agent.temperature, topP: agent.top_p, agentMode })
+
+    res.json({ id, ok: true })
+  } catch (e) {
+    console.error('custom-tools create error:', e.message)
+    res.status(500).json({ error: e.message })
+  }
+})
+
+app.delete('/api/agents/:botId/custom-tools/:toolId', requireAriaAuth, async (req, res) => {
+  const { botId, toolId } = req.params
+  const tool = db.prepare('SELECT * FROM agent_custom_tools WHERE id=? AND bot_id=? AND workspace_id=?').get(toolId, botId, req.ariaUser.workspaceId)
+  if (!tool) return res.status(404).json({ error: 'Integración no encontrada' })
+  const agent = db.prepare('SELECT * FROM dify_agents WHERE id=? AND workspace_id=?').get(botId, req.ariaUser.workspaceId)
+  try {
+    db.prepare('DELETE FROM agent_custom_tools WHERE id=?').run(toolId)
+    if (tool.dify_provider_name) {
+      await difyConsoleApi('/workspaces/current/tool-provider/api/delete', 'POST', { provider: tool.dify_provider_name }).catch(() => {})
+    }
+    if (agent) {
+      const ariaToolProvider = await ensureAriaToolProvider(req.ariaUser.workspaceId)
+      const agentMode = buildFullAgentMode(req.ariaUser.workspaceId, botId, JSON.parse(agent.extra_builtin_tools || '[]'), ariaToolProvider)
+      await difyUpdateModelConfig(agent.dify_app_id, { prePrompt: agent.system_prompt || '', temperature: agent.temperature, topP: agent.top_p, agentMode })
+    }
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -3871,6 +4855,196 @@ async function callLLMWithTools({ system, messages, workspaceId, projectId, requ
   }
 
   return { text: finalText, model, usage: totalUsage }
+}
+
+// ── Agente "Lucas" — calificador silencioso ───────────────────────────────────
+// Sistema de tools independiente de BOT_TOOLS: opera solo sobre tablas locales
+// (contacts, funnel_stages, tasks, lead_scores) usando contacts.id — el mismo ID
+// que ya usan Funnels.jsx y Tasks.jsx. Nunca pega contra Tiledesk.
+const QUALIFIER_TOOLS = [
+  {
+    name: 'set_funnel_stage',
+    description: 'Mueve el contacto a una etapa del embudo de ventas y/o marca ganado/perdido.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        stage:       { type: 'string', description: 'ID de la etapa (ej: prospecto, calificado, propuesta, cerrado)' },
+        lead_status: { type: 'string', enum: ['open', 'won', 'lost'], description: 'Estado del lead' },
+      },
+      required: ['stage'],
+    },
+  },
+  {
+    name: 'fill_contact_fields',
+    description: 'Completa SOLO los campos del contacto que están vacíos (nunca sobreescribe datos existentes).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        email:   { type: 'string' },
+        company: { type: 'string' },
+        name:    { type: 'string' },
+      },
+    },
+  },
+  {
+    name: 'append_note',
+    description: 'Agrega un resumen breve de esta conversación a la nota del contacto (no borra lo anterior).',
+    input_schema: {
+      type: 'object',
+      properties: { note: { type: 'string', description: 'Resumen breve: qué quería, en qué quedó, datos relevantes' } },
+      required: ['note'],
+    },
+  },
+  {
+    name: 'create_followup_task',
+    description: 'Crea una tarea de seguimiento o agendamiento para que un vendedor humano la retome.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title:       { type: 'string' },
+        description: { type: 'string' },
+        priority:    { type: 'string', enum: ['low', 'normal', 'high'] },
+        due_date:    { type: 'string', description: 'Fecha sugerida YYYY-MM-DD, opcional' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'set_lead_score',
+    description: 'OBLIGATORIO: llamar siempre al final con la temperatura y score del lead analizado.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        temperature: { type: 'string', enum: ['frio', 'tibio', 'caliente'] },
+        score:       { type: 'integer', minimum: 0, maximum: 100 },
+        reasoning:   { type: 'string', description: '1-2 frases explicando el score' },
+      },
+      required: ['temperature', 'score'],
+    },
+  },
+]
+
+function executeQualifierTool(toolName, input, { workspaceId, contactId }) {
+  if (toolName === 'set_funnel_stage') {
+    const { stage, lead_status = 'open' } = input
+    db.prepare(`
+      INSERT INTO funnel_stages (workspace_id, lead_id, stage, lead_status, updated_at)
+      VALUES (?,?,?,?,strftime('%s','now'))
+      ON CONFLICT(workspace_id, lead_id) DO UPDATE SET
+        stage=excluded.stage, lead_status=excluded.lead_status, updated_at=excluded.updated_at
+    `).run(workspaceId, contactId, stage, lead_status)
+    return `Movido a etapa "${stage}" (${lead_status}).`
+  }
+
+  if (toolName === 'fill_contact_fields') {
+    const c = db.prepare('SELECT email, company, name FROM contacts WHERE id=?').get(contactId)
+    if (!c) return 'Contacto no encontrado.'
+    const sets = [], vals = []
+    for (const f of ['email', 'company', 'name']) {
+      if (!c[f] && input[f]) { sets.push(`${f}=?`); vals.push(input[f]) }
+    }
+    if (!sets.length) return 'Nada que completar (los campos ya tenían datos).'
+    db.prepare(`UPDATE contacts SET ${sets.join(',')}, updated_at=strftime('%s','now') WHERE id=?`).run(...vals, contactId)
+    return `Completados: ${sets.join(', ')}.`
+  }
+
+  if (toolName === 'append_note') {
+    const c = db.prepare('SELECT note FROM contacts WHERE id=?').get(contactId)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const newNote = c?.note ? `${c.note}\n---\n[${stamp}] ${input.note}` : `[${stamp}] ${input.note}`
+    db.prepare("UPDATE contacts SET note=?, updated_at=strftime('%s','now') WHERE id=?").run(newNote, contactId)
+    return 'Nota agregada.'
+  }
+
+  if (toolName === 'create_followup_task') {
+    const { title, description, priority = 'normal', due_date } = input
+    const contact = db.prepare('SELECT name FROM contacts WHERE id=?').get(contactId)
+    db.prepare(`
+      INSERT INTO tasks (id, workspace_id, title, description, lead_id, lead_name, due_date, priority, status)
+      VALUES (?,?,?,?,?,?,?,?,'pending')
+    `).run(randomUUID(), workspaceId, title, description || null, contactId, contact?.name || null,
+      due_date ? Math.floor(new Date(due_date).getTime() / 1000) : null, priority)
+    return `Tarea "${title}" creada.`
+  }
+
+  if (toolName === 'set_lead_score') {
+    const { temperature, score, reasoning } = input
+    db.prepare(`
+      INSERT INTO lead_scores (workspace_id, contact_id, temperature, score, reasoning, updated_at)
+      VALUES (?,?,?,?,?,strftime('%s','now'))
+      ON CONFLICT(workspace_id, contact_id) DO UPDATE SET
+        temperature=excluded.temperature, score=excluded.score, reasoning=excluded.reasoning, updated_at=excluded.updated_at
+    `).run(workspaceId, contactId, temperature, score, reasoning || null)
+    return 'Score registrado.'
+  }
+
+  return 'Tool desconocida.'
+}
+
+// Loop de tool-calling de Lucas — patrón de fetch directo igual al de callLLMWithTools
+// (copiado y recortado a propósito, no reutilizado, para no arriesgar el bot conversacional).
+async function runQualifierAgent({ workspaceId, contactId, transcriptText }) {
+  const cs = db.prepare('SELECT llm_provider, llm_api_key, llm_model FROM channel_settings WHERE workspace_id=?').get(workspaceId)
+  let provider = cs?.llm_provider, apiKey = cs?.llm_api_key, model = cs?.llm_model
+
+  // Dify no soporta tools custom inyectadas vía su API pública de chat → fallback a env.
+  if (!apiKey || provider === 'dify') {
+    if (process.env.ANTHROPIC_API_KEY)    { provider = 'anthropic'; apiKey = process.env.ANTHROPIC_API_KEY; model = 'claude-haiku-4-5-20251001' }
+    else if (process.env.OPENAI_API_KEY)  { provider = 'openai';    apiKey = process.env.OPENAI_API_KEY;    model = 'gpt-4o-mini' }
+    else throw new Error('Lucas: sin API key fallback (ANTHROPIC_API_KEY/OPENAI_API_KEY) para workspace en Dify')
+  }
+
+  const system = `Sos Lucas, un analista de ventas silencioso. Leés una conversación de WhatsApp YA CERRADA entre un bot/vendedor y un lead, y actualizás el CRM usando las tools disponibles. No inventes datos que no estén en la conversación. No hables con el cliente, solo usá las tools. SIEMPRE terminá llamando set_lead_score.`
+  let currentMessages = [{ role: 'user', content: `Transcript de la conversación:\n${transcriptText}` }]
+  const toolContext = { workspaceId, contactId }
+  const MAX_ROUNDS = 4
+  let scored = false
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    if (provider === 'anthropic') {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 600, system, messages: currentMessages, tools: QUALIFIER_TOOLS }),
+      })
+      const d = await r.json()
+      if (d.error) throw new Error(d.error.message || JSON.stringify(d.error))
+      const toolUses = (d.content || []).filter(b => b.type === 'tool_use')
+      if (!toolUses.length || d.stop_reason === 'end_turn') break
+
+      currentMessages.push({ role: 'assistant', content: d.content })
+      const toolResults = []
+      for (const tu of toolUses) {
+        const result = executeQualifierTool(tu.name, tu.input, toolContext)
+        if (tu.name === 'set_lead_score') scored = true
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: result })
+      }
+      currentMessages.push({ role: 'user', content: toolResults })
+    } else {
+      const openaiTools = QUALIFIER_TOOLS.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } }))
+      const r = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ model, max_tokens: 600, messages: [{ role: 'system', content: system }, ...currentMessages], tools: openaiTools, tool_choice: 'auto' }),
+      })
+      const d = await r.json()
+      if (d.error) throw new Error(d.error.message || JSON.stringify(d.error))
+      const msg = d.choices?.[0]?.message
+      if (!msg?.tool_calls?.length || d.choices?.[0]?.finish_reason === 'stop') break
+
+      currentMessages.push(msg)
+      for (const tc of msg.tool_calls) {
+        const args = JSON.parse(tc.function.arguments || '{}')
+        const result = executeQualifierTool(tc.function.name, args, toolContext)
+        if (tc.function.name === 'set_lead_score') scored = true
+        currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
+      }
+    }
+  }
+
+  if (!scored) {
+    executeQualifierTool('set_lead_score', { temperature: 'tibio', score: 50, reasoning: 'Lucas no determinó un score explícito.' }, toolContext)
+  }
 }
 
 // ── External Bot Webhook (Tiledesk → ARIA → LLM → Tiledesk) ──────────────────

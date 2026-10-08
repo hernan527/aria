@@ -49,6 +49,13 @@ function Field({ label, required, description, children }) {
 const inputCls  = 'w-full bg-[#1a1a2e] text-white text-sm px-3.5 py-2.5 rounded-xl border border-white/10 outline-none focus:border-aria-500 transition-colors placeholder:text-white/20'
 const selectCls = inputCls + ' cursor-pointer'
 
+const TONE_EXAMPLES = {
+  Empático:    'Entiendo lo que me contás, vamos a resolverlo juntos 💛',
+  Profesional: 'Buenas tardes. Le confirmo que el producto está disponible.',
+  Informal:    'Dale, tranquilo que ya te ayudo con eso 👍',
+  Técnico:     'Confirmado: stock disponible, envío en 48hs.',
+}
+
 // ── ChipSelect (multi-select con dropdown) ────────────────────────────────────
 
 function ChipSelect({ label, options, selected, onToggle, defaultLabel, warning }) {
@@ -131,28 +138,33 @@ function ChipSelect({ label, options, selected, onToggle, defaultLabel, warning 
   )
 }
 
-// ── Template selector ─────────────────────────────────────────────────────────
+// ── Template selector (contenedor dentro del form, no un paso aparte) ────────
 
-function TemplateSelector({ onSelect }) {
+function TemplateContainer({ selected, onSelect }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
-      {TEMPLATES.map(t => {
-        const Icon = t.icon
-        return (
-          <button key={t.id} onClick={() => onSelect(t)}
-            className="flex items-start gap-3 p-4 rounded-xl border border-white/8 bg-white/2 hover:border-white/20 hover:bg-white/5 transition-all text-left group">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
-              style={{ backgroundColor: t.color + '20', border: `1px solid ${t.color}40` }}>
-              <Icon size={18} style={{ color: t.color }} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-white leading-tight">{t.name}</p>
-              <p className="text-xs text-white/40 mt-1 leading-relaxed">{t.desc}</p>
-            </div>
-          </button>
-        )
-      })}
-    </div>
+    <Field label="Tipo de agente" description="Define el rubro/estilo del agente. Podés cambiarlo más adelante.">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {TEMPLATES.map(t => {
+          const Icon = t.icon
+          const isSel = selected?.id === t.id
+          return (
+            <button key={t.id} type="button" onClick={() => onSelect(t)}
+              className={`flex items-start gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                isSel ? 'border-aria-500/50 bg-aria-500/10' : 'border-white/8 bg-white/2 hover:border-white/20 hover:bg-white/5'
+              }`}>
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ backgroundColor: t.color + '20', border: `1px solid ${t.color}40` }}>
+                <Icon size={15} style={{ color: t.color }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-white leading-tight">{t.name}</p>
+                <p className="text-[11px] text-white/35 mt-0.5 leading-relaxed">{t.desc}</p>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </Field>
   )
 }
 
@@ -188,10 +200,11 @@ function StepBar({ current }) {
 
 // ── Step 1: Datos básicos ─────────────────────────────────────────────────────
 
-function Step1({ form, onChange, onNext, creating }) {
-  const [showFlowPicker, setShowFlowPicker] = useState(false)
+function Step1({ form, onChange, onNext, creating, template, onSelectTemplate }) {
   return (
     <form onSubmit={e => { e.preventDefault(); onNext() }} className="space-y-5">
+      <TemplateContainer selected={template} onSelect={onSelectTemplate} />
+
       <Field label="Nombre del agente" required description="Como se va a identificar el agente en una conversación">
         <input name="name" value={form.name} onChange={onChange}
           placeholder="Ej: Aurelia" className={inputCls} required />
@@ -203,6 +216,7 @@ function Step1({ form, onChange, onNext, creating }) {
           <option>Informal</option>
           <option>Técnico</option>
         </select>
+        <p className="text-[11px] text-white/25 mt-1 italic">"{TONE_EXAMPLES[form.tone] || TONE_EXAMPLES.Empático}"</p>
       </Field>
       <Field label="Idioma">
         <input value="Español" readOnly className={inputCls + ' opacity-50 cursor-not-allowed'} />
@@ -545,10 +559,7 @@ function SliderField({ label, name, value, onChange, min = 0, max = 2, step = 0.
 
 function Step3({ form, onChange, onBack, onNext, channels, agents }) {
   const channelOptions = (channels || []).map(c => ({ id: c.id, label: c.instance_name || c.session_name }))
-  const agentOptions   = (agents  || []).map(a => {
-    const u = a.id_user || a
-    return { id: a._id, label: u.firstname ? `${u.firstname} ${u.lastname || ''}`.trim() : u.email }
-  })
+  const agentOptions   = (agents  || []).map(a => ({ id: a.id, label: a.name || a.email }))
 
   const toggleChannel = (id) => {
     let sel = form.channels.includes('__all__') ? [] : [...form.channels]
@@ -815,8 +826,8 @@ export default function AgentWizard() {
   const { project } = useAuth()
   const projectId   = project?._id || project?.id
 
-  const [template,     setTemplate]     = useState(null)
-  const [step,         setStep]         = useState(0)
+  const [template,     setTemplate]     = useState(TEMPLATES[0])
+  const [step,         setStep]         = useState(1)
   const [draftBotId,      setDraftBotId]      = useState(null)
   const [kbNamespaceId,   setKbNamespaceId]   = useState(null)
   const [creating,     setCreating]     = useState(false)
@@ -834,6 +845,7 @@ export default function AgentWizard() {
   })
 
   const { data: channels } = useApi(() => api.getWahaSessions(), [])
+  const { data: members }  = useApi(() => api.getWorkspaceMembers(), [])
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -938,8 +950,7 @@ export default function AgentWizard() {
   }
 
   function goBack() {
-    if (step === 0) navigate('/agents')
-    else if (step === 1) setStep(0)
+    if (step === 1) navigate('/agents')
     else setStep(s => s - 1)
   }
 
@@ -958,13 +969,11 @@ export default function AgentWizard() {
             </button>
             <div>
               <h1 className="text-lg font-bold text-white">Crear Nuevo Agente</h1>
-              <p className="text-xs text-white/40">
-                {step === 0 ? 'Selecciona el tipo de agente que deseas configurar' : `Paso ${step} de 5`}
-              </p>
+              <p className="text-xs text-white/40">Paso {step} de 5</p>
             </div>
           </div>
 
-          {tpl && step > 0 && (
+          {tpl && step > 1 && (
             <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-white/3 border border-white/8 mb-6">
               <div className="flex items-center gap-2.5">
                 {TplIcon && (
@@ -995,8 +1004,6 @@ export default function AgentWizard() {
         )}
 
         <div className="bg-[#13132a] rounded-2xl border border-white/8 p-6">
-          {step === 0 && <TemplateSelector onSelect={t => { setTemplate(t); setStep(1) }} />}
-
           {step === 1 && (
             <>
               <div className="flex items-center gap-2.5 mb-6">
@@ -1005,7 +1012,8 @@ export default function AgentWizard() {
                 </div>
                 <h2 className="text-base font-semibold text-white">Datos básicos</h2>
               </div>
-              <Step1 form={form} onChange={handleChange} onNext={handleStep1Next} creating={creating} />
+              <Step1 form={form} onChange={handleChange} onNext={handleStep1Next} creating={creating}
+                template={template} onSelectTemplate={setTemplate} />
             </>
           )}
 
@@ -1034,7 +1042,7 @@ export default function AgentWizard() {
               <Step3 form={form} onChange={handleChange}
                 onBack={() => setStep(2)} onNext={handleStep3Next}
                 channels={Array.isArray(channels) ? channels : []}
-                agents={[]} />
+                agents={Array.isArray(members) ? members : []} />
             </>
           )}
 

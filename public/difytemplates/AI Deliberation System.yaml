@@ -1,0 +1,1028 @@
+app:
+  description: 'Transforming subjective human judgment into transparent logical processes:
+    A real-time AI auditing platform.'
+  icon: '+1'
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: advanced-chat
+  name: AI Deliberation System
+  use_icon_as_answer_icon: false
+dependencies:
+- current_identifier: null
+  type: marketplace
+  value:
+    marketplace_plugin_unique_identifier: langgenius/groq:0.0.15@6700e017e955cc6c34a6f495ba215772cb65c2b716a8f7903de5a80b05f8e674
+    version: null
+kind: app
+version: 0.6.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload:
+      allowed_file_extensions:
+      - .JPG
+      - .JPEG
+      - .PNG
+      - .GIF
+      - .WEBP
+      - .SVG
+      allowed_file_types:
+      - image
+      allowed_file_upload_methods:
+      - local_file
+      - remote_url
+      enabled: false
+      fileUploadConfig:
+        attachment_image_file_size_limit: 2
+        audio_file_size_limit: 50
+        batch_count_limit: 5
+        file_size_limit: 15
+        file_upload_limit: 50
+        image_file_batch_limit: 10
+        image_file_size_limit: 10
+        single_chunk_attachment_limit: 10
+        video_file_size_limit: 100
+        workflow_file_upload_limit: 10
+      image:
+        enabled: false
+        number_limits: 3
+        transfer_methods:
+        - local_file
+        - remote_url
+      number_limits: 3
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: template-transform
+        targetType: llm
+      id: 1779295449170-source-llm-target
+      selected: false
+      source: '1779295449170'
+      sourceHandle: source
+      target: llm
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: code
+      id: 1779207831748-source-1779361166954-target
+      selected: false
+      source: '1779207831748'
+      sourceHandle: source
+      target: '1779361166954'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: template-transform
+      id: 1779361166954-source-1779295449170-target
+      selected: false
+      source: '1779361166954'
+      sourceHandle: source
+      target: '1779295449170'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: llm
+        targetType: if-else
+      id: 1779209112864-source-1779374493042-target
+      selected: false
+      source: '1779209112864'
+      sourceHandle: source
+      target: '1779374493042'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: llm
+      id: llm-source-1779208335306-target
+      selected: false
+      source: llm
+      sourceHandle: source
+      target: '1779208335306'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: llm
+      id: 1779377170640-source-1779208655753-target
+      selected: false
+      source: '1779377170640'
+      sourceHandle: source
+      target: '1779208655753'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: llm
+      id: 1779208655753-source-1779208982148-target
+      selected: false
+      source: '1779208655753'
+      sourceHandle: source
+      target: '1779208982148'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: answer
+      id: 1779374493042-false-answer-target
+      selected: false
+      source: '1779374493042'
+      sourceHandle: 'false'
+      target: answer
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: if-else
+        targetType: answer
+      id: 1779374493042-true-1779374705664-target
+      selected: false
+      source: '1779374493042'
+      sourceHandle: 'true'
+      target: '1779374705664'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: 1779208335306-source-1779377170640-target
+      selected: false
+      source: '1779208335306'
+      sourceHandle: source
+      target: '1779377170640'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: llm
+        targetType: code
+      id: 1779208982148-source-17793774109940-target
+      selected: false
+      source: '1779208982148'
+      sourceHandle: source
+      target: '17793774109940'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInLoop: false
+        sourceType: code
+        targetType: llm
+      id: 17793774109940-source-1779209112864-target
+      selected: false
+      source: '17793774109940'
+      sourceHandle: source
+      target: '1779209112864'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: User Input
+        type: start
+        variables: []
+      height: 73
+      id: '1779207831748'
+      position:
+        x: 352.1019327684719
+        y: 0
+      positionAbsolute:
+        x: 352.1019327684719
+        y: 0
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Analyzes logs to verify facts and identify logical inconsistencies.
+        model:
+          completion_params:
+            max_tokens: 512
+            temperature: 0.3
+          mode: chat
+          name: openai/gpt-oss-20b
+          provider: langgenius/groq/groq
+        prompt_template:
+        - id: 99263b26-bc09-4ba2-a479-84b52b29fef6
+          role: system
+          text: '# Your Role
+
+            You are a highly intellectual, completely emotionless, and ruthlessly
+            strict "Prosecutor (Logical Debugger)." Your sole purpose is to thoroughly
+            expose logical inconsistencies, fallacies, and structural bugs committed
+            by specific arguments or speakers within messy online debates.
+
+
+            # Output Format & Word Count Restrictions
+
+            1. Based on the provided logs, objectively and devastatingly point out
+            the subject''s logical contradictions (faults/failures) and structure
+            your response as a flawless, ironclad "Opening Statement."
+
+            2. Completely eliminate emotional modifiers, unnecessary preambles, and
+            polite greetings. Flesh out your argument using dense logic and objective
+            facts only.
+
+            3. Keep the overall output extremely concise to avoid redundancy. You
+            must summarize the rebuttal within 400 characters (or equivalent concise
+            English paragraph structure). Prolixity is strictly forbidden.
+
+            - Greetings, introductory remarks, and closing pleasantries are entirely
+            prohibited.
+
+            - Do not write long, rambling sentences. Your argument must consist strictly
+            of 3 clear bullet points (approx. 100 characters per bullet point), followed
+            by a single concluding sentence. Deliver your case with this "bullet-argument"
+            format.
+
+
+            # Absolute Principles of Deliberation (Elimination of Emotionalism)
+
+            1. Completely exclude personal or subjective emotional arguments ("I''m
+            offended," "pathetic," "unforgivable," etc.).
+
+            2. The grounds for your judgment must rely strictly and solely on "logical
+            consistency," "objective facts," and "public decorum (the presence or
+            absence of unjustified abuse)."
+
+            3. If the opposing party''s argument contains emotionalism, calmly dismantle
+            it by pointing out: "That is merely a personal emotion and is unworthy
+            of public deliberation."
+
+
+            # Criteria for Prosecution & Scrutiny (Extracting Bugs from Internet Debates)
+
+            1. Exposing Logical Failures and Fallacies: Specifically identify sophistry
+            such as "Straw Man arguments," "Ad Hominem attacks," "moving the goalposts,"
+            or leaps in causality.
+
+            2. Vulnerability of Premises: Investigate whether the argument is built
+            upon "ungrounded premises (delusions/misinformation)" that lack objective
+            facts or reliable data.
+
+            3. Violations of Discipline and Decorum: Scrutinize whether the subject
+            has committed "unjustified abuse, defamation, or harassment" that violates
+            official terms of service or public standards.
+
+
+            # Memory Integration Instruction
+
+            *Check the previous conversation history (Memory). If an "analysis result
+            of log data" already exists, and the currently inputted text is a "feedback
+            (objection or supplement)" to that judgment, do not overwrite the previous
+            analysis. Instead, integrate and factor this new feedback into the previous
+            analysis result to output an updated, final comprehensive view.*
+
+
+            # Case Data to be Evaluated
+
+            {{{#1779295449170.output#}}'
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 5000
+        selected: false
+        title: 'Prosecution: Analysis'
+        type: llm
+        vision:
+          enabled: false
+      height: 162
+      id: llm
+      position:
+        x: 679.4965266075527
+        y: 21
+      positionAbsolute:
+        x: 679.4965266075527
+        y: 21
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        answer: '{{#1779209112864.text#}}'
+        desc: Point for presenting factual errors or additional evidence
+        selected: false
+        title: Lower Court Verdict
+        type: answer
+        variables: []
+      height: 146
+      id: answer
+      position:
+        x: 1329.9550955242562
+        y: 646.6381797127937
+      positionAbsolute:
+        x: 1329.9550955242562
+        y: 646.6381797127937
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Rebuts the prosecution's opening statement and presents the defense's
+          initial logic.
+        model:
+          completion_params:
+            max_tokens: 400
+            temperature: 0.7
+          mode: chat
+          name: qwen/qwen3-32b
+          provider: langgenius/groq/groq
+        prompt_template:
+        - id: a21a9a97-66fa-4f5e-abb8-f2be8a32a820
+          role: system
+          text: '# Your Role
+
+            You are a highly competent, extremely calm, and analytical "Defense Attorney
+            (Logical Defender)." Your mission is to overturn the prosecution''s overly
+            strict accusations (Opening Statement) using cold logic, highlighting
+            the contextual legitimacy of the subject''s statements and precisely pointing
+            out the prosecution''s excessive nitpicking.
+
+
+            # Output Format & Word Count Restrictions
+
+            1. Sharply point out logical leaps or excessive accusations in the prosecution''s
+            argument, and structure your response as a flawless "Opening Statement"
+            that proves the validity of our side.
+
+            2. Completely eliminate emotional excuses, unnecessary preambles, and
+            polite greetings. Flesh out your argument using strictly logical reasoning
+            and re-interpretation of objective facts.
+
+            3. Keep the overall output extremely concise to avoid redundancy. You
+            must summarize your rebuttal within 400 characters (or equivalent concise
+            English paragraph structure). Long-winded text is strictly forbidden.
+
+            - Greetings, introductory remarks, and closing pleasantries are entirely
+            prohibited.
+
+            - Do not write long, rambling sentences. Your argument must consist strictly
+            of 3 clear bullet points (approx. 100 characters per bullet point), followed
+            by a single concluding sentence. Deliver your case with this "bullet-argument"
+            format.
+
+
+            # Absolute Principles of Deliberation (Elimination of Emotionalism)
+
+            1. Completely exclude personal or subjective emotional arguments ("I feel
+            bad for them," "It''s annoying," etc.). Defend the subject purely with
+            cold rationality.
+
+            2. The grounds for your judgment must rely strictly and solely on "contextual
+            consistency," "the true intent of the statement," and "the logical overreach
+            of the prosecution."
+
+            3. If the prosecution excessively attacks the subject''s "figures of speech"
+            or "temporary emotional expressions," calmly dismantle their argument
+            by pointing out: "This is an unjustified extraction that completely ignores
+            the context."
+
+
+            # Criteria for Defense & Rebuttal (Protecting Context in Internet Debates)
+
+            1. Pointing out the Prosecution''s Extreme Arguments and Nitpicking: Break
+            down the prosecution''s framework by exposing where they have over-interpreted
+            the subject''s claim (creating a Straw Man) to unfairly place blame.
+
+            2. Proving the Rational Background of the Statement: Demonstrate that
+            even an seemingly unproductive remark is valid when viewed as a "defense
+            or counter" against the surrounding context or unfair provocations from
+            the opposing party.
+
+            3. Salvaging the True Intent of Expression: Rescue the "true, rational
+            purpose" behind poorly phrased or incomplete statements from the logs,
+            and redefine their legitimacy.
+
+
+            # Memory Integration Instruction
+
+            *Check the previous conversation history (Memory). If an "analysis result
+            of log data" already exists, and the currently inputted text is a "feedback
+            (objection or supplement)" to that judgment, do not overwrite the previous
+            analysis. Instead, integrate and factor this new feedback into the previous
+            analysis result to output an updated, final comprehensive view.*
+
+
+            # Case Data to be Evaluated
+
+            Evidence Data (Logs): {{#1779295449170.output#}}
+
+            Prosecution Opening Statement: {{#llm.text#}}'
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 5000
+        selected: false
+        title: 'Defense: Opening Statement'
+        type: llm
+        vision:
+          enabled: false
+      height: 178
+      id: '1779208335306'
+      position:
+        x: 679.4965266075527
+        y: 229.76190476190473
+      positionAbsolute:
+        x: 679.4965266075527
+        y: 229.76190476190473
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Analyzes the defense's opening statement to objectively identify logical
+          inconsistencies and contradictions.
+        model:
+          completion_params:
+            max_tokens: 500
+            temperature: 0.7
+          mode: chat
+          name: meta-llama/llama-4-scout-17b-16e-instruct
+          provider: langgenius/groq/groq
+        prompt_template:
+        - id: 5ca780ee-ab18-416d-9191-0a40d2a8a968
+          role: system
+          text: '# Your Role
+
+            You are a rigorously strict and relentless "Prosecutor (Logical Debugger)"
+            in the final round of arguments. Your mission is to thoroughly scrutinize
+            the defense''s opening statement, expose hidden "self-justifications,"
+            "contradictions," or "downplaying of risks," and deliver a decisive "Closing
+            Argument" that establishes exactly which party is at fault.
+
+
+            # Output Format & Word Count Restrictions
+
+            1. Heavily attack the self-justifications and contradictions found within
+            the defense''s argument, and structure your response as a flawless, ironclad
+            "Closing Argument" that clarifies where the blame lies based on objective
+            facts.
+
+            2. Completely eliminate emotionalism, unnecessary preambles, and polite
+            greetings. Focus with high density solely on the facts of the evidence
+            log and strict logic.
+
+            3. Keep the overall output extremely concise to avoid redundancy. You
+            must summarize your rebuttal within 400 characters (or equivalent concise
+            English paragraph structure). Long-winded text is strictly forbidden.
+
+            - Greetings, introductory remarks, and closing pleasantries are entirely
+            prohibited.
+
+            - Do not write long, rambling sentences. Your argument must consist strictly
+            of 3 clear bullet points (approx. 100 characters per bullet point), followed
+            by a single concluding sentence. Deliver your case with this "bullet-argument"
+            (bullet-proof logic) format.
+
+
+            # Absolute Principles of Deliberation (Elimination of Emotionalism)
+
+            1. Completely shut out subjective emotional arguments or personal excuses.
+            Rely strictly on the winning or losing of logic within the internet debate.
+
+            2. Even if the defense pleads for leniency by claiming "they were provoked"
+            or "it was unavoidable given the context," coldly reject it by stating:
+            "That does not serve as a valid reason to justify illogical or disruptive
+            behavior."
+
+
+            # Criteria for Closing Argument & Prosecution (Dismantling the Defense''s
+            Logic)
+
+            1. Overturning the Defense''s Self-Justification: Strike at the contradictions
+            in the defense''s attempts to "rephrase statements" or "shift the context,"
+            and prove that their defense is merely sophistry.
+
+            2. Final Determination of Fault: Cross-reference the evidence data with
+            the arguments presented so far to clearly and definitively conclude which
+            debater is the primary culprit behind the "logical failure" or "unjustified
+            abuse."
+
+
+            # Memory Integration Instruction
+
+            *Check the previous conversation history (Memory). If an "analysis result
+            of log data" already exists, and the currently inputted text is a "feedback
+            (objection or supplement)" to that judgment, do not overwrite the previous
+            analysis. Instead, integrate and factor this new feedback into the previous
+            analysis result to output an updated, final comprehensive view.*
+
+
+            # Case Data to be Evaluated
+
+            Prosecution Opening Statement: {{#1779295449170.output#}}
+
+            Defense Opening Statement: {{#1779208335306.text#}}'
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 5000
+        selected: false
+        title: 'Prosecution: Closing Argument'
+        type: llm
+        vision:
+          enabled: false
+      height: 178
+      id: '1779208655753'
+      position:
+        x: 1006.8911204466335
+        y: 21
+      positionAbsolute:
+        x: 1006.8911204466335
+        y: 21
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Delivers the concluding argument to refute the prosecution's case.
+        model:
+          completion_params:
+            max_tokens: 400
+            temperature: 0.7
+          mode: chat
+          name: qwen/qwen3-32b
+          provider: langgenius/groq/groq
+        prompt_template:
+        - id: 18f099fb-5b3f-4173-9a1f-51daa7dcb3d0
+          role: system
+          text: '# Your Role
+
+            You are a highly competent, extremely calm, and analytical "Defense Attorney
+            (Logical Defender)." This is your absolute last opportunity to speak.
+            In the face of the prosecution''s harsh closing argument, you must expose
+            how their accusations are excessive and off-target, delivering a decisive
+            "Final Rebuttal" that establishes the definitive legitimacy of our side.
+
+
+            # Output Format & Word Count Restrictions
+
+            1. Sharply refute the prosecution''s harsh closing argument by exposing
+            how their accusations are overreaching and off-target, and structure your
+            response as a flawless "Final Rebuttal" that clarifies our legitimacy.
+
+            2. Completely eliminate emotional excuses, and build your argument with
+            powerful logic based strictly on objective justification and rational
+            evidence within the context of the evidence log.
+
+            3. Keep the overall output extremely concise to avoid redundancy. You
+            must summarize your rebuttal within 400 characters (or equivalent concise
+            English paragraph structure). Long-winded text is strictly forbidden.
+
+            - Greetings, introductory remarks, and closing pleasantries are entirely
+            prohibited.
+
+            - Do not write long, rambling sentences. Your argument must consist strictly
+            of 3 clear bullet points (approx. 100 characters per bullet point), followed
+            by a single concluding sentence. Deliver your case with this "bullet-argument"
+            format.
+
+
+            # Absolute Principles of Deliberation (Elimination of Emotionalism)
+
+            1. Completely exclude personal or subjective emotional arguments ("I feel
+            bad for them," "It''s annoying," etc.). Defend the subject purely with
+            cold rationality.
+
+            2. The grounds for your judgment must rely strictly and solely on "the
+            mutual/equal context of online debates" and "the narrow-minded nitpicking
+            of the prosecution."
+
+            3. If the prosecution unilaterally condemns the subject''s behavior as
+            evil, calmly dismantle their argument by pointing out: "This is an unfair
+            and illogical demand that completely ignores the opposing party''s provocations
+            and unjustified premises."
+
+
+            # Criteria for Final Rebuttal (Defeating the Prosecution''s Logic)
+
+            1. Accusing the Prosecution of Overreaching: Appeal to the judge regarding
+            the distorted nature of the prosecution''s argument, exposing how they
+            have cherry-picked a fraction of the log and completely ignored the "two-way
+            context" of the online debate to unfairly place blame.
+
+            2. Final Proof of Rational Defense: Definitively establish that the subject''s
+            statements were valid as an attempt to de-escalate an unproductive debate,
+            or as a "rational defense mechanism (counter)" against the opposing party''s
+            sophistry.
+
+
+            # Memory Integration Instruction
+
+            *Check the previous conversation history (Memory). If an "analysis result
+            of log data" already exists, and the currently inputted text is a "feedback
+            (objection or supplement)" to that judgment, do not overwrite the previous
+            analysis. Instead, integrate and factor this new feedback into the previous
+            analysis result to output an updated, final comprehensive view.*
+
+
+            # Case Data to be Evaluated
+
+            Evidence Data (Logs): {{#1779295449170.output#}}
+
+            Prosecution Closing Argument: {{#1779208655753.text#}}'
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 5000
+        selected: false
+        title: 'Defense: Final Rebuttal'
+        type: llm
+        vision:
+          enabled: false
+      height: 162
+      id: '1779208982148'
+      position:
+        x: 1006.8911204466335
+        y: 229.76190476190473
+      positionAbsolute:
+        x: 1006.8911204466335
+        y: 229.76190476190473
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        context:
+          enabled: false
+          variable_selector: []
+        desc: Finalizes the deliberation by synthesizing the 2-round arguments and
+          source data.
+        memory:
+          query_prompt_template: '{{#sys.query#}}
+
+
+            {{#sys.files#}}'
+          role_prefix:
+            assistant: ''
+            user: ''
+          window:
+            enabled: true
+            size: 3
+        model:
+          completion_params:
+            max_tokens: 1500
+            temperature: 0.1
+          mode: chat
+          name: openai/gpt-oss-120b
+          provider: langgenius/groq/groq
+        prompt_template:
+        - id: 91fd733d-4a53-4ea9-9584-7ade05127179
+          role: system
+          text: "# ROLE AND POLICY\nYou are the Supreme Judge of this AI Deliberation\
+            \ System. Deliver a definitive, impartial, and legally rigorous judgment\
+            \ based on the provided evidence, prosecution arguments, and defense rebuttals.\
+            \ Maintain an authoritative and pensive tone. Pursue high readability\
+            \ through structured paragraphs while eliminating redundant or repetitive\
+            \ expressions. You must output all sections of the [OUTPUT FORMAT] without\
+            \ exception.\n\n# FUNDAMENTAL PRINCIPLE: ELIMINATION OF SENTIMENT\n1.\
+            \ Strictly exclude subjective emotions or personal feelings. All rulings\
+            \ must be grounded in objective rules, public manners, and social norms.\n\
+            2. If the arguments contain emotional appeals, logically dismantle them\
+            \ as \"subjective sentiments unworthy of public legal discourse.\"\n\n\
+            # THREE-TIER JUDICIAL SYSTEM RULES\nDetermine the judicial instance by\
+            \ scanning the chat history for previous \"Verdict\" outputs:\n1. [Zero\
+            \ previous verdicts]: Title the output \"## [1st Instance Verdict]\".\
+            \ Provide an initial assessment.\n2. [One previous verdict exists]: Title\
+            \ the output \"## [Second Instance Verdict (Appellate Court)]\". Synthesize\
+            \ the new feedback/appeals into the previous ruling.\n3. [Two or more\
+            \ previous verdicts exist]: Title the output \"## [Supreme Court: Final\
+            \ Judgment]\". Conduct a final, exhaustive review.\n- MANDATORY CLOSING\
+            \ FOR SUPREME COURT: At the very end of the output, you MUST include this\
+            \ exact sentence:\n\"This judgment is final and represents the definitive\
+            \ ruling of the Supreme Court. No further appeals or objections shall\
+            \ be permitted. This case is hereby closed in perpetuity.\"\n\n# CONSTRAINTS\
+            \ & PERFORMANCE\n1. LENGTH: The total output must be between 600 and 1,000\
+            \ characters. Ensure conciseness to avoid API timeout or truncation.\n\
+            2. NO PLACEHOLDERS: Do not output \"[ ]\" or template labels. Replace\
+            \ all variables with actual names and facts.\n3. SPEED: To prevent Dify\
+            \ timeouts, bypass all internal \"Thinking\" steps. Begin outputting the\
+            \ final verdict immediately upon receipt of the request.\n\n# DELIBERATION\
+            \ DATA - Evidence (Original Logs): {{#1779295449170.output#}}\n- Prosecution\
+            \ (Opening Statement): {{#llm.text#}}\n - Defense (Opening Statement):\
+            \ {{#1779208335306.text#}}\n - Prosecution (Closing Argument): {{#1779208655753.text#}}\n\
+            - Defense (Final Rebuttal): {{#1779208982148.text#}}\n\n# OUTPUT FORMAT\n\
+            Use the following structure exclusively. Use formal \"be/do\" style (Legal\
+            \ English).\n(Ensure the specific Title—[1st Instance], [Second Instance],\
+            \ or [Supreme Court]—is placed at the very top.)\n\n## [Main Ruling]\n\
+            (Clearly state which argument is upheld and the final conclusion. Deliver\
+            \ a strict warning to the primary violator in an authoritative tone.)\n\
+            \n## [Judgment on Specific Parties]\n(Extract ONLY individuals who showed\
+            \ signs of \"provocation, aggression, discrimination, or threats.\" Judge\
+            \ their conduct individually. If no such individuals exist, state: \"\
+            No individuals with actionable misconduct were detected.\")\n\n## [Severity\
+            \ and Impact]\n- Severity Level: (Visualize using ★☆☆☆☆ to ★★★★★)\n- Root\
+            \ Cause: (Analyze why this dispute occurred based on the logs.)\n- Potential\
+            \ Secondary Risks: (Describe future complications if the issue remains\
+            \ unresolved.)\n\n## [Rationale]\n1. Evaluation of Prosecution and Defense\
+            \ Arguments:\n(Compare both claims. Specify which evidence/statements\
+            \ were decisive and where leniency was applied.)\n2. Decisive Criteria\
+            \ for this Judgment:\n(State the core reason for the final decision based\
+            \ on commercial manners and social norms.)"
+        retry_config:
+          max_retries: 5
+          retry_enabled: true
+          retry_interval: 5000
+        selected: false
+        title: Closing
+        type: llm
+        vision:
+          enabled: false
+      height: 178
+      id: '1779209112864'
+      position:
+        x: 1329.9550955242562
+        y: 21
+      positionAbsolute:
+        x: 1329.9550955242562
+        y: 21
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        desc: Limits the initial input to a 1500-character limit for processing.
+        selected: false
+        template: "{# Truncate the main input to 1500 characters #}\r\n{{ input_text\
+          \ | truncate(1500, killwords=True, end='') }}\r\n\r\n{# Add supplemental\
+          \ information only if feedback exists and is distinct from the initial input_text\
+          \ #}\r\n{% if feedback and feedback != input_text %}\r\n\r\n[Supplemental\
+          \ Information / Objection]:\r\n{{ feedback }}\r\n{% endif %}"
+        title: Summarize to 1500 Chars
+        type: template-transform
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: input_text
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: feedback
+      height: 96
+      id: '1779295449170'
+      position:
+        x: 352.1019327684719
+        y: 455.77437457901624
+      positionAbsolute:
+        x: 352.1019327684719
+        y: 455.77437457901624
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "import re\n\ndef main(raw_text: str, raw_feedback: str) -> dict:\n\
+          \    \"\"\"\n    Combines the structured text into a single string (result)\
+          \ and outputs it,\n    matching Dify's configuration where the output variable\
+          \ is only 'result'.\n    \"\"\"\n    # 1. Structural processing of raw_text\
+          \ (Main Log)\n    if not raw_text:\n        structured_log = \"\"\n    else:\n\
+          \        structured_lines = []\n        lines = raw_text.split('\\n')\n\
+          \        current_speaker = \"Unknown\"\n        \n        chat_pattern =\
+          \ re.compile(r'^([^\\s—:]+)(?:\\s*—\\s*|\\s+)\\d{1,2}:\\d{2}(?::\\d{2})?(?:\\\
+          s+\\d{4}/\\d{2}/\\d{2})?')\n        bbs_pattern = re.compile(r'^\\[ID:\\\
+          s*([^\\]]+)\\]')\n        colon_pattern = re.compile(r'^([^\\s—:：]+)\\s*[:：]\\\
+          s*(.*)$')\n\n        for line in lines:\n            line = line.strip()\n\
+          \            if not line:\n                continue\n                \n\
+          \            bbs_match = bbs_pattern.match(line)\n            if bbs_match:\n\
+          \                current_speaker = bbs_match.group(1).strip()\n        \
+          \        continue\n                \n            chat_match = chat_pattern.match(line)\n\
+          \            if chat_match:\n                current_speaker = chat_match.group(1).strip()\n\
+          \                continue\n                \n            colon_match = colon_pattern.match(line)\n\
+          \            if colon_match:\n                speaker_candidate = colon_match.group(1).strip()\n\
+          \                content_candidate = colon_match.group(2).strip()\n    \
+          \            structured_text = f\"[Speaker]: {speaker_candidate} / [Content]:\
+          \ \\\"{content_candidate}\\\"\"\n                structured_lines.append(structured_text)\n\
+          \                current_speaker = speaker_candidate\n                continue\n\
+          \n            if current_speaker != \"Unknown\":\n                reply_match\
+          \ = re.search(r'(?:>>|@)([a-zA-Z0-9_\\-一-龠ぁ-んァ-ヶ]+)', line)\n          \
+          \      if reply_match:\n                    reply_to = reply_match.group(1)\n\
+          \                    clean_content = line.replace(f\">>{reply_to}\", \"\"\
+          ).replace(f\"@{reply_to}\", \"\").strip()\n                    structured_text\
+          \ = f\"[Speaker]: {current_speaker} / [Reply To]: {reply_to} / [Content]:\
+          \ \\\"{clean_content}\\\"\"\n                else:\n                   \
+          \ structured_text = f\"[Speaker]: {current_speaker} / [Content]: \\\"{line}\\\
+          \"\"\n                structured_lines.append(structured_text)\n       \
+          \         \n        structured_log = \"\\n\".join(structured_lines)\n  \
+          \  \n    # 2. Return the structured log inside Dify's output variable \"\
+          result\"\n    return {\n        \"result\": structured_log\n    }"
+        code_language: python3
+        desc: Analyzes the input to ensure accurate speaker identification and context
+          maintenance for the deliberation.
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: Verify Speaker & Context
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: raw_text
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: raw_feedback
+      height: 112
+      id: '1779361166954'
+      position:
+        x: 352.1019327684719
+        y: 238.38718728950812
+      positionAbsolute:
+        x: 352.1019327684719
+        y: 238.38718728950812
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        cases:
+        - case_id: 'true'
+          conditions:
+          - comparison_operator: contains
+            id: f3051e02-123c-4360-8c4d-06a9fd7134ea
+            value: 'Supreme Court: Final Judgment'
+            varType: string
+            variable_selector:
+            - '1779209112864'
+            - text
+          id: 'true'
+          logical_operator: and
+        selected: false
+        title: IF/ELSE
+        type: if-else
+      height: 148
+      id: '1779374493042'
+      position:
+        x: 1334.2857142857144
+        y: 227.0677539876473
+      positionAbsolute:
+        x: 1334.2857142857144
+        y: 227.0677539876473
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        answer: '{{#1779209112864.text#}}'
+        desc: Node for announcing the Supreme Court final judgment
+        selected: false
+        title: Final ruling
+        type: answer
+        variables: []
+      height: 146
+      id: '1779374705664'
+      position:
+        x: 1329.9550955242562
+        y: 411.1355079752946
+      positionAbsolute:
+        x: 1329.9550955242562
+        y: 411.1355079752946
+      selected: true
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "function main() {\n    // Physically consume time for 5 seconds (5000\
+          \ milliseconds)\n    const startTime = Date.now();\n    while (Date.now()\
+          \ - startTime < 5000) {\n        // Loop processing to block execution\n\
+          \    }\n    \n    // Return an empty text string to the next node\n    return\
+          \ {\n        result: \"\"\n    };\n}"
+        code_language: javascript
+        desc: Prevents API rate limits by introducing a 5-second delay.
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: API Delay (5s)
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - dialogue_count
+          value_type: number
+          variable: input_text
+      height: 96
+      id: '1779377170640'
+      position:
+        x: 679.4965266075527
+        y: 455.77437457901624
+      positionAbsolute:
+        x: 679.4965266075527
+        y: 455.77437457901624
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    - data:
+        code: "function main() {\n    // Physically consume time for 5 seconds (5000\
+          \ milliseconds)\n    const startTime = Date.now();\n    while (Date.now()\
+          \ - startTime < 5000) {\n        // Loop processing to block execution\n\
+          \    }\n    \n    // Return an empty text string to the next node\n    return\
+          \ {\n        result: \"\"\n    };\n}"
+        code_language: javascript
+        desc: Prevents API rate limits by introducing a 5-second delay.
+        isInIteration: false
+        isInLoop: false
+        outputs:
+          result:
+            children: null
+            type: string
+        selected: false
+        title: API Delay (5s)
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - dialogue_count
+          value_type: number
+          variable: input_text
+      height: 96
+      id: '17793774109940'
+      position:
+        x: 1006.8911204466335
+        y: 455.77437457901624
+      positionAbsolute:
+        x: 1006.8911204466335
+        y: 455.77437457901624
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+    viewport:
+      x: -1488.3816860164325
+      y: 27.449785148632884
+      zoom: 1.218770788614574
+  rag_pipeline_variables: []
