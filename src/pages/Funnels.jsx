@@ -145,7 +145,8 @@ function FunnelModal({ funnel, onSave, onClose }) {
             </div>
             <div className="space-y-2">
               {stages.map((st, idx) => (
-                <div key={idx} className="flex items-center gap-2">
+                <div key={idx} className="space-y-1.5">
+                <div className="flex items-center gap-2">
                   {/* Color picker */}
                   <div className="relative group">
                     <div className="w-6 h-6 rounded-full cursor-pointer border border-white/20" style={{ backgroundColor: st.color }} />
@@ -167,7 +168,18 @@ function FunnelModal({ funnel, onSave, onClose }) {
                     <Trash2 size={13} />
                   </button>
                 </div>
+                {/* Criterio para que Lucas mueva oportunidades a esta etapa (sin criterio, la IA no la usa) */}
+                <input
+                  value={st.criteria || ''}
+                  onChange={e => updateStage(idx, 'criteria', e.target.value)}
+                  placeholder="✨ Criterio para la IA (opcional): ej. pidió precio o cotización"
+                  className="w-full ml-8 max-w-[calc(100%-2rem)] bg-white/[0.03] border border-white/5 rounded-lg px-3 py-1.5 text-xs text-white/80 outline-none focus:border-indigo-500/50 placeholder-white/25"
+                />
+                </div>
               ))}
+              <p className="text-[11px] text-white/35 pt-1">
+                Lucas solo mueve oportunidades a las etapas que tienen criterio.
+              </p>
             </div>
           </div>
         </div>

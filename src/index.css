@@ -9,6 +9,10 @@
   body {
     @apply bg-surface text-white font-sans antialiased;
     margin: 0;
+    background-image:
+      radial-gradient(ellipse 800px 500px at 10% -10%, rgba(51, 85, 255, 0.16), transparent),
+      radial-gradient(ellipse 700px 500px at 100% 0%, rgba(168, 85, 247, 0.10), transparent);
+    background-attachment: fixed;
   }
   ::-webkit-scrollbar {
     width: 4px;
@@ -24,13 +28,13 @@
 
 @layer components {
   .card {
-    @apply bg-surface-50 rounded-2xl border border-white/5 p-6;
+    @apply bg-surface-50 rounded-2xl border border-white/5 p-6 transition-all duration-300 hover:border-white/10 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/20;
   }
   .card-sm {
-    @apply bg-surface-50 rounded-xl border border-white/5 p-4;
+    @apply bg-surface-50 rounded-xl border border-white/5 p-4 transition-colors duration-200;
   }
   .btn-primary {
-    @apply bg-aria-500 hover:bg-aria-600 text-white font-medium px-4 py-2 rounded-xl transition-colors text-sm;
+    @apply bg-gradient-to-br from-aria-400 to-aria-600 hover:from-aria-400 hover:to-aria-700 text-white font-medium px-4 py-2 rounded-xl transition-all text-sm shadow-lg shadow-aria-500/20 hover:shadow-aria-500/30 hover:-translate-y-px active:translate-y-0;
   }
   .btn-ghost {
     @apply hover:bg-white/5 text-white/60 hover:text-white font-medium px-4 py-2 rounded-xl transition-colors text-sm;

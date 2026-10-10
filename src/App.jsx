@@ -15,6 +15,9 @@ import Atenciones from './pages/Atenciones'
 import Funnels from './pages/Funnels'
 import Contacts from './pages/Contacts'
 import Tasks from './pages/Tasks'
+import Campaigns from './pages/Campaigns'
+import Axel from './pages/Axel'
+import Lucas from './pages/Lucas'
 import Tutorials from './pages/Tutorials'
 import Settings from './pages/Settings'
 import AgentWizard from './pages/AgentWizard'
@@ -58,6 +61,9 @@ export default function App() {
               <Route path="funnels" element={<Funnels />} />
               <Route path="contacts" element={<Contacts />} />
               <Route path="tasks" element={<Tasks />} />
+              <Route path="campaigns" element={<Campaigns />} />
+              <Route path="auditor" element={<Axel />} />
+              <Route path="lucas" element={<Lucas />} />
               <Route path="tutorials" element={<Tutorials />} />
               <Route path="settings" element={<Settings />} />
             </Route>

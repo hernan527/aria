@@ -925,7 +925,7 @@ function TabCopilot() {
 
 const MODELS = {
   openai:    ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'gpt-3.5-turbo'],
-  anthropic: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-5', 'claude-opus-4-7'],
+  anthropic: ['claude-haiku-5-5', 'claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-opus-4-7'],
   dify:      [],
 }
 
@@ -1023,7 +1023,7 @@ function TabPlan() {
   return (
     <div className="max-w-2xl space-y-8">
 
-      {/* ## Config IA — oculto (modelo SaaS: el proveedor lo gestiona el owner a nivel infra, sin config por workspace)
+      {/* Config IA (solo owner): proveedor/modelo/clave que usan Lucas, Tobías y Axel; vacío = variables del stack */}
       {isOwner && (
         <div>
           <p className="text-xs font-semibold text-white/40 uppercase tracking-wider mb-3">Configuración de IA</p>
@@ -1063,6 +1063,9 @@ function TabPlan() {
                 placeholder={provider === 'dify' ? 'app-...' : llmCfg?.configured ? llmCfg.api_key : 'sk-...'} type="password"
                 className={inputCls2} />
             </div>
+            <p className="text-[11px] text-white/35">
+              La usan los agentes internos de ARIA (Lucas, Tobías y Axel). Los bots que atienden WhatsApp usan el modelo configurado en cada app de Dify.
+            </p>
             <div className="flex justify-end">
               <button onClick={saveLlm} disabled={savingLlm}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-aria-500 hover:bg-aria-600 text-white text-sm font-medium transition-colors disabled:opacity-50">
@@ -1073,7 +1076,6 @@ function TabPlan() {
           </div>
         </div>
       )}
-      ## */}
 
       {/* Uso de tokens */}
       <div>
@@ -1464,6 +1466,7 @@ function InviteModal({ onClose, onDone }) {
 
 function MemberEditModal({ member, onClose, onDone }) {
   const [name, setName]     = useState(member.name || '')
+  const [phone, setPhone]   = useState(member.phone || '')
   const [role, setRole]     = useState(member.role === 'admin' ? 'admin' : 'member')
   const [active, setActive] = useState(member.active !== 0)
   const [saving, setSaving] = useState(false)
@@ -1471,7 +1474,7 @@ function MemberEditModal({ member, onClose, onDone }) {
   async function handleSubmit() {
     setSaving(true)
     try {
-      await api.updateMember(member.id, { name: name.trim(), role, active })
+      await api.updateMember(member.id, { name: name.trim(), phone: phone.trim(), role, active })
       onDone?.()
       onClose()
     } catch (err) { alert(err.message) }
@@ -1493,6 +1496,12 @@ function MemberEditModal({ member, onClose, onDone }) {
           <div>
             <label className="block text-xs font-medium text-white/50 mb-1.5">Nombre</label>
             <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nombre del vendedor"
+              className="w-full bg-surface rounded-xl border border-white/10 text-white text-sm px-3.5 py-2.5 outline-none focus:border-aria-500 transition-colors placeholder:text-white/20" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-white/50 mb-1.5">WhatsApp propio</label>
+            <p className="text-[11px] text-white/30 mb-1.5">Para avisarle ahí cuando se le asigna un chat (nadie mira el navegador todo el día).</p>
+            <input type="text" value={phone} onChange={e => setPhone(e.target.value)} placeholder="5491122334455"
               className="w-full bg-surface rounded-xl border border-white/10 text-white text-sm px-3.5 py-2.5 outline-none focus:border-aria-500 transition-colors placeholder:text-white/20" />
           </div>
           <div>

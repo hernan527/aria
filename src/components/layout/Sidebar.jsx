@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Bot, MessageSquare,
   Users, CheckSquare, PlayCircle, Settings,
   ChevronLeft, ChevronRight, Zap, LogOut,
-  Sparkles, GitMerge,
+  Sparkles, GitMerge, Megaphone, ShieldCheck, MessageSquareText,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -17,6 +17,9 @@ const NAV_ITEMS = [
   { to: '/funnels',       icon: GitMerge,        label: 'Embudos' },
   { to: '/contacts',      icon: Users,           label: 'Contactos' },
   { to: '/tasks',         icon: CheckSquare,     label: 'Tareas' },
+  { to: '/lucas',         icon: MessageSquareText, label: 'Lucas' },
+  { to: '/campaigns',     icon: Megaphone,       label: 'Campañas' },
+  { to: '/auditor',       icon: ShieldCheck,     label: 'Auditoría' },
   { to: '/tutorials',     icon: PlayCircle,      label: 'Tutoriales' },
 ]
 

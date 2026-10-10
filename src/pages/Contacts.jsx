@@ -45,6 +45,7 @@ function TagsModal({ projectId, onClose, onChanged }) {
   const [editId, setEditId]     = useState(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState('')
+  const [editCriteria, setEditCriteria] = useState('')
   const [saving, setSaving]     = useState(false)
 
   const colorPickerRef = useRef(null)
@@ -82,6 +83,7 @@ function TagsModal({ projectId, onClose, onChanged }) {
     setEditId(tag._id || tag.id)
     setEditName(tag.title || tag.name || '')
     setEditColor(tag.color || '#3B82F6')
+    setEditCriteria(tag.criteria || '')
   }
   const cancelEdit = () => setEditId(null)
 
@@ -89,7 +91,7 @@ function TagsModal({ projectId, onClose, onChanged }) {
     const id = tag._id || tag.id
     setSaving(true)
     try {
-      await api.updateLabel(projectId, id, { title: editName.trim(), color: editColor })
+      await api.updateLabel(projectId, id, { title: editName.trim(), color: editColor, criteria: editCriteria })
       setEditId(null)
       await loadTags()
       onChanged?.()
@@ -284,6 +286,14 @@ function TagsModal({ projectId, onClose, onChanged }) {
                               />
                             </div>
                           </div>
+                          {/* Criterio para Lucas (Smart Tags): sin criterio, la IA no usa este tag */}
+                          <textarea
+                            value={editCriteria}
+                            onChange={e => setEditCriteria(e.target.value)}
+                            rows={2}
+                            placeholder="✨ Criterio para la IA (opcional): ej. pidió precio de planes empresa"
+                            className="w-full order-last bg-surface-50 text-white/85 text-xs px-2.5 py-1.5 rounded-lg border border-white/10 outline-none focus:border-aria-500 placeholder-white/25"
+                          />
                           <div className="flex gap-1.5 ml-auto">
                             <button
                               onClick={() => handleSave(tag)}
@@ -311,6 +321,9 @@ function TagsModal({ projectId, onClose, onChanged }) {
                             >
                               {name}
                             </span>
+                            {tag.criteria && (
+                              <span className="text-[11px] text-white/40 truncate" title={tag.criteria}>✨ {tag.criteria}</span>
+                            )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <button

@@ -17,7 +17,7 @@ const TEMPLATES = [
   { id: 'lead-qualifier',        template_id: 'chatgpt-task', icon: UserCheck,  color: '#6b7fff', name: 'Agente Calificador de Leads',      desc: 'Califica leads con IA — responde preguntas y deriva cuando corresponde.' },
   { id: 'faq',                   template_id: 'chatgpt-task', icon: HelpCircle, color: '#34d399', name: 'Agente de Preguntas Frecuentes',   desc: 'Responde automáticamente preguntas comunes usando IA y tu base de conocimiento.' },
   { id: 'travel',                template_id: 'chatgpt-task', icon: Plane,      color: '#f59e0b', name: 'Agente para Agencias de Viajes',  desc: 'Asiste y califica leads para agencias de viajes con IA.' },
-  { id: 'broker',                template_id: 'chatgpt-task', icon: ShieldCheck,color: '#a78bfa', name: 'Agente para Brokers de Salud',    desc: 'Califica leads para brokers de obras sociales y prepagas.' },
+  { id: 'broker',                template_id: 'chatgpt-task', icon: ShieldCheck,color: '#a78bfa', name: 'Agente para Planes de Salud',      desc: 'Listo para usar: viene con objetivo, tono y reglas ya definidas para vender obras sociales y prepagas.' },
   { id: 'concesionaria-directa', template_id: 'chatgpt-task', icon: Car,        color: '#f97316', name: 'Agente para Concesionarias',      desc: 'Califica leads para concesionarias — test drive listo.' },
   { id: 'concesionaria-plan',    template_id: 'chatgpt-task', icon: PiggyBank,  color: '#ec4899', name: 'Agente para Plan Ahorro',         desc: 'Precalifica consultas de plan ahorro vehicular.' },
 ]

@@ -28,6 +28,14 @@ async function request(path, opts = {}) {
   return res.json()
 }
 
+// URLs de media de WAHA (fotos/audios/documentos recibidos) exigen API key del lado del
+// servidor — <img>/<a> no pueden mandar headers, así que pasan por este proxy con el
+// token de sesión en la query string.
+export function wahaMediaUrl(url) {
+  if (!url) return url
+  return `${ARIA_API}/waha/media?url=${encodeURIComponent(url)}&token=${encodeURIComponent(getToken())}`
+}
+
 // ── ARIA auth ─────────────────────────────────────────────────────────────────
 export const api = {
   login: (email, password) =>
@@ -136,9 +144,17 @@ export const api = {
   getAiScoringSettings: () => request('/ai-scoring/settings'),
   setAiScoringEnabled: (enabled) =>
     request('/ai-scoring/settings', { method: 'PUT', body: JSON.stringify({ enabled }) }),
-  getAiScoringSummary: () => request('/ai-scoring/summary'),
+  getAiScoringSummary: (range = {}) => request(`/ai-scoring/summary?${new URLSearchParams(range)}`),
   getAiScoringScores: () => request('/ai-scoring/scores'),
-  getAiScoringTop: (limit) => request(`/ai-scoring/top?limit=${limit || 10}`),
+  getAiScoringTop: (limit, range = {}) => request(`/ai-scoring/top?${new URLSearchParams({ limit: limit || 10, ...range })}`),
+  runAiScoringNow: () => request('/ai-scoring/run-now', { method: 'POST' }),
+  getLucasMetrics: (range) => request(`/lucas/metrics?${new URLSearchParams(range)}`),
+  getLucasDaily: (range) => request(`/lucas/daily?${new URLSearchParams(range)}`),
+  getLucasOrigins: (range) => request(`/lucas/origins?${new URLSearchParams(range)}`),
+  getLucasHot: (range) => request(`/lucas/hot?${new URLSearchParams(range)}`),
+  getLucasTags: (range) => request(`/lucas/tags?${new URLSearchParams(range)}`),
+  getLucasConfig: () => request('/lucas/config'),
+  updateLucasConfig: (payload) => request('/lucas/config', { method: 'PUT', body: JSON.stringify(payload) }),
 
   // ── Canales ────────────────────────────────────────────────────────────────
   getChannelSettings: () => request('/channels/settings'),
@@ -254,6 +270,43 @@ export const api = {
     return request(`/tasks${qs ? '?' + qs : ''}`)
   },
   createTask: (payload) => request('/tasks', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // ── Campañas (Tobías) ─────────────────────────────────────────────────────────
+  // ── Axel (auditor comercial) ────────────────────────────────────────────────
+  getAxelSellers: ({ from, to, q }) => request(`/axel/sellers?${new URLSearchParams({ from, to, q: q || '' })}`),
+  getAxelConfig: () => request('/axel/config'),
+  updateAxelConfig: (payload) => request('/axel/config', { method: 'PUT', body: JSON.stringify(payload) }),
+  getAxelAnalyses: () => request('/axel/analyses'),
+  getAxelAnalysis: (id) => request(`/axel/analyses/${id}`),
+  createAxelAnalyses: (payload) => request('/axel/analyses', { method: 'POST', body: JSON.stringify(payload) }),
+  deleteAxelAnalysis: (id) => request(`/axel/analyses/${id}`, { method: 'DELETE' }),
+  // Descarga directa: el token viaja en la query porque un <a>/window.open no manda headers
+  axelExportUrl: (id) => `${ARIA_API}/axel/analyses/${id}/export?token=${encodeURIComponent(getToken())}`,
+
+  getOnboarding: () => request('/onboarding'),
+  getDashboardMetrics: (range) => request(`/dashboard/metrics?${new URLSearchParams(range)}`),
+  getCampaigns: () => request('/campaigns'),
+  getTobiasSettings: () => request('/campaigns/settings'),
+  setTobiasEnabled: (enabled) =>
+    request('/campaigns/settings', { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  getCampaignSummary: (days = 30) => request(`/campaigns/summary?days=${days}`),
+  previewCampaignAudience: (audience, strategy) =>
+    request('/campaigns/preview', { method: 'POST', body: JSON.stringify({ audience, strategy }) }),
+  sampleCampaignMessage: (payload) =>
+    request('/campaigns/sample-message', { method: 'POST', body: JSON.stringify(payload) }),
+  createCampaign: (payload) => request('/campaigns', { method: 'POST', body: JSON.stringify(payload) }),
+  updateCampaign: (id, payload) => request(`/campaigns/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  campaignAction: (id, action) =>
+    request(`/campaigns/${id}/action`, { method: 'POST', body: JSON.stringify({ action }) }),
+  deleteCampaign: (id) => request(`/campaigns/${id}`, { method: 'DELETE' }),
+  getCampaignRecipients: (id) => request(`/campaigns/${id}/recipients`),
+  // El archivo va crudo en el body (no JSON): el tipo en Content-Type y el nombre en X-Filename
+  uploadCampaignAttachment: (file) =>
+    request('/campaigns/attachments', {
+      method: 'POST',
+      body: file,
+      headers: { 'Content-Type': file.type, 'X-Filename': encodeURIComponent(file.name) },
+    }),
   updateTask: (id, payload) => request(`/tasks/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteTask: (id) => request(`/tasks/${id}`, { method: 'DELETE' }),
 
@@ -263,6 +316,10 @@ export const api = {
     request('/scheduled-messages', { method: 'POST', body: JSON.stringify(payload) }),
   deleteScheduledMessage: (id) =>
     request(`/scheduled-messages/${id}`, { method: 'DELETE' }),
+
+  // ── Asistente de comandos ───────────────────────────────────────────────────
+  sendAssistantCommand: (text) =>
+    request('/assistant/command', { method: 'POST', body: JSON.stringify({ text }) }),
 
   // ── HubSpot ───────────────────────────────────────────────────────────────
   getHubspotConfig: () => request('/hubspot/config'),

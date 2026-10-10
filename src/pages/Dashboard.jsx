@@ -10,8 +10,10 @@ import {
   MessageSquare, Clock, Target, DollarSign,
   Bot, Send, Timer, TrendingUp, RefreshCw,
   Calendar, ChevronDown, Zap, Flame, Thermometer, Snowflake,
-  ShieldCheck, Megaphone, ArrowRight,
+  ShieldCheck, Megaphone, ArrowRight, Filter,
 } from 'lucide-react'
+import { OnboardingChecklist } from '../components/dashboard/OnboardingChecklist'
+import { KpiRow, SecondRow, ThirdRow } from '../components/dashboard/KpiRow'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell,
@@ -49,6 +51,14 @@ export default function Dashboard() {
   const { project } = useAuth()
   const navigate = useNavigate()
   const [range, setRange] = useState(RANGES[1])
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const [customFrom, setCustomFrom] = useState(() => new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))
+  const [customTo, setCustomTo] = useState(todayISO)
+  // Período en epoch segundos para las filas de métricas propias de ARIA
+  const epochRange = {
+    from: Math.floor((range.from ? new Date(`${range.from}T00:00:00`).getTime() : startOfDay(range.days)) / 1000),
+    to: Math.floor((range.to ? new Date(`${range.to}T23:59:59`).getTime() : endOfDay()) / 1000),
+  }
   const [metrics, setMetrics] = useState(null)
   const [chartData, setChartData] = useState([])
   const [loading, setLoading] = useState(true)
@@ -64,8 +74,9 @@ export default function Dashboard() {
     if (!projectId) return
     setLoading(true)
     try {
-      const end = endOfDay()
-      const start = startOfDay(range.days)
+      // Rango a medida (Desde/Hasta + Filtrar) o uno de los rápidos (Hoy, 7, 30, 90 días)
+      const end = range.to ? new Date(`${range.to}T23:59:59.999`).getTime() : endOfDay()
+      const start = range.from ? new Date(`${range.from}T00:00:00`).getTime() : startOfDay(range.days)
 
       const [requests, msgStats] = await Promise.allSettled([
         api.getRequests(projectId, { limit: 500 }),
@@ -162,7 +173,10 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
           <p className="text-sm text-white/40 mt-0.5">
-            {lastUpdated ? `Actualizado ${lastUpdated.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}` : 'Cargando datos...'}
+            Resumen operativo y comercial de tu subcuenta
+            <span className="text-white/25 text-xs ml-2">
+              {lastUpdated ? `· actualizado ${lastUpdated.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}` : '· cargando…'}
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -192,6 +206,27 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <OnboardingChecklist />
+
+      {/* Período a medida */}
+      <form className="flex flex-wrap items-center gap-3 mb-6" onSubmit={e => {
+        e.preventDefault()
+        const fmt = d => new Date(`${d}T12:00:00`).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+        setRange({ label: `${fmt(customFrom)} – ${fmt(customTo)}`, from: customFrom, to: customTo })
+      }}>
+        <span className="text-sm text-white/60">Desde</span>
+        <input type="date" aria-label="Desde" value={customFrom} max={customTo} onChange={e => setCustomFrom(e.target.value)}
+          className="bg-surface-50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-aria-500/60" />
+        <span className="text-sm text-white/60">hasta</span>
+        <input type="date" aria-label="Hasta" value={customTo} min={customFrom} max={todayISO} onChange={e => setCustomTo(e.target.value)}
+          className="bg-surface-50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-aria-500/60" />
+        <button type="submit" className="btn-ghost border border-white/10 flex items-center gap-2"><Filter size={14} /> Filtrar</button>
+      </form>
+
+      <KpiRow range={epochRange} />
+      <SecondRow range={epochRange} />
+      <ThirdRow range={epochRange} />
+
       {/* Main KPI grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <MetricCard
@@ -201,7 +236,7 @@ export default function Dashboard() {
           loading={false}
           delta={loading ? undefined : 12}
           deltaLabel="vs período anterior"
-          accent="bg-aria-500"
+          color="#3355ff"
         />
         <MetricCard
           label="Tiempo al primer contacto"
@@ -210,6 +245,7 @@ export default function Dashboard() {
           loading={false}
           delta={loading ? undefined : -8}
           deltaLabel="mejora vs anterior"
+          color="#06b6d4"
         />
         <MetricCard
           label="Tasa de contactabilidad"
@@ -218,7 +254,7 @@ export default function Dashboard() {
           loading={false}
           delta={loading ? undefined : 5}
           deltaLabel="vs período anterior"
-          accent="bg-emerald-500"
+          color="#10b981"
         />
         <MetricCard
           label="Revenue generado"
@@ -226,7 +262,7 @@ export default function Dashboard() {
           icon={DollarSign}
           loading={false}
           deltaLabel="Próximamente"
-          accent="bg-amber-500"
+          color="#f59e0b"
         />
       </div>
 
@@ -238,7 +274,7 @@ export default function Dashboard() {
           loading={false}
           delta={loading ? undefined : 18}
           deltaLabel="vs período anterior"
-          accent="bg-purple-500"
+          color="#a855f7"
         />
         <MetricCard
           label="Mensajes enviados por IA"
@@ -247,6 +283,7 @@ export default function Dashboard() {
           loading={false}
           delta={loading ? undefined : 23}
           deltaLabel="vs período anterior"
+          color="#ec4899"
         />
         <MetricCard
           label="Tiempo ahorrado"
@@ -254,7 +291,7 @@ export default function Dashboard() {
           icon={Timer}
           loading={false}
           deltaLabel="minutos en el período"
-          accent="bg-cyan-500"
+          color="#14b8a6"
         />
         <MetricCard
           label="Eficiencia IA"
@@ -263,7 +300,7 @@ export default function Dashboard() {
           loading={false}
           delta={loading ? undefined : 4}
           deltaLabel="conversaciones automatizadas"
-          accent="bg-rose-500"
+          color="#f43f5e"
         />
       </div>
 
@@ -374,6 +411,9 @@ export default function Dashboard() {
                 <Zap size={14} className="text-indigo-400" />
               </div>
               <h3 className="text-sm font-semibold text-white">Lucas</h3>
+              <button onClick={() => navigate('/lucas')} className="ml-auto flex items-center gap-1 text-[11px] text-white/40 hover:text-aria-300">
+                Ver <ArrowRight size={12} />
+              </button>
             </div>
             <p className="text-[11px] text-white/30 mb-3">Analista de Conversaciones y Scoring</p>
 
@@ -383,7 +423,7 @@ export default function Dashboard() {
                   Activá a Lucas para que califique tus leads por temperatura y score automáticamente.
                 </p>
                 <button
-                  onClick={() => navigate('/settings')}
+                  onClick={() => navigate('/lucas')}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs rounded-lg transition-colors"
                 >
                   Activar análisis con IA <ArrowRight size={12} />
@@ -423,33 +463,35 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Axel — próximamente */}
-          <div className="card lg:col-span-1 opacity-50">
+          {/* Axel — auditor comercial */}
+          <button onClick={() => navigate('/auditor')} className="card lg:col-span-1 text-left">
             <div className="flex items-center gap-2 mb-1">
-              <div className="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center">
-                <ShieldCheck size={14} className="text-white/40" />
+              <div className="w-7 h-7 rounded-lg bg-sky-500/15 flex items-center justify-center">
+                <ShieldCheck size={14} className="text-sky-300" />
               </div>
               <h3 className="text-sm font-semibold text-white">Axel</h3>
-              <Badge variant="default">Próximamente</Badge>
+              <Badge variant="warning">BETA</Badge>
+              <ArrowRight size={13} className="ml-auto text-white/30" />
             </div>
-            <p className="text-[11px] text-white/30">
-              Auditor Comercial: evalúa el desempeño de tus vendedores, mide SLA de respuesta y detecta fugas en el proceso de venta.
+            <p className="text-[11px] text-white/40">
+              Auditor comercial: mira vender a tu equipo y te dice, sin vueltas, por qué se te escapan las ventas.
             </p>
-          </div>
+          </button>
 
-          {/* Tobías — próximamente */}
-          <div className="card lg:col-span-1 opacity-50">
+          {/* Tobías — gestor de campañas */}
+          <button onClick={() => navigate('/campaigns')} className="card lg:col-span-1 text-left">
             <div className="flex items-center gap-2 mb-1">
-              <div className="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center">
-                <Megaphone size={14} className="text-white/40" />
+              <div className="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center">
+                <Megaphone size={14} className="text-amber-300" />
               </div>
               <h3 className="text-sm font-semibold text-white">Tobías</h3>
-              <Badge variant="default">Próximamente</Badge>
+              <Badge variant="warning">BETA</Badge>
+              <ArrowRight size={13} className="ml-auto text-white/30" />
             </div>
-            <p className="text-[11px] text-white/30">
-              Gestor de Campañas: reactiva leads fríos con mensajes salientes personalizados por WhatsApp.
+            <p className="text-[11px] text-white/40">
+              Gestor de campañas: va a buscar a los que se enfriaron y los trae de vuelta, uno por uno.
             </p>
-          </div>
+          </button>
         </div>
       </div>
 
